@@ -1,0 +1,64 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>de.geolykt.starloader</groupId>
+    <artifactId>sl-deobf</artifactId>
+    <version>0.0.1</version>
+    <name>Starloader-Deobfuscator</name>
+    <description>A bleeding edge debug information regeneration tool since noone else wanted to do this.</description>
+
+    <dependencies>
+        <!-- https://mvnrepository.com/artifact/org.ow2.asm/asm -->
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-tree</artifactId>
+            <version>9.2</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-util</artifactId>
+            <version>9.2</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.jetbrains/annotations -->
+        <dependency>
+            <groupId>org.jetbrains</groupId>
+            <artifactId>annotations</artifactId>
+            <version>23.0.0</version>
+            <scope>compile</scope>
+        </dependency>
+    </dependencies>
+
+    <distributionManagement>
+        <repository>
+            <id>geolykt-maven-ftp</id>
+            <!-- This is the developer connection. The actual repository 
+                is located under https://geolykt.de/maven/ -->
+            <url>ftp://geolykt.de/geolykt.de/public_html/maven/</url>
+        </repository>
+    </distributionManagement>
+
+    <build>
+        <extensions>
+            <!-- Enabling the use of FTP for deployment -->
+            <extension>
+                <groupId>org.apache.maven.wagon</groupId>
+                <artifactId>wagon-ftp</artifactId>
+                <version>3.5.1</version>
+            </extension>
+        </extensions>
+
+        <plugins>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.9.0</version>
+                <configuration>
+                    <release>16</release>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
