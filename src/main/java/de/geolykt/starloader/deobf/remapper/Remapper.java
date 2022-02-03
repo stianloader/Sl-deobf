@@ -367,12 +367,20 @@ public final class Remapper {
         Object bsmArg = bsmArgs[index];
         if (bsmArg instanceof Type) {
             Type type = (Type) bsmArg;
-            if (type.getSort() != Type.METHOD) {
-                throw new IllegalArgumentException("Unexpected bsm arg Type sort.");
-            }
             sharedStringBuilder.setLength(0);
-            if (remapSignature(type.getDescriptor(), sharedStringBuilder)) {
-                bsmArgs[index] = Type.getMethodType(sharedStringBuilder.toString());
+
+            if (type.getSort() == Type.METHOD) {
+                if (remapSignature(type.getDescriptor(), sharedStringBuilder)) {
+                    bsmArgs[index] = Type.getMethodType(sharedStringBuilder.toString());
+                }
+            } else if (type.getSort() == Type.OBJECT) {
+                String oldVal = type.getInternalName();
+                String remappedVal = remapInternalName(oldVal, sharedStringBuilder);
+                if (oldVal != remappedVal) { // Instance comparison intended
+                    bsmArgs[index] = Type.getObjectType(remappedVal);
+                }
+            } else {
+                throw new IllegalArgumentException("Unexpected bsm arg Type sort. Sort = " + type.getSort() + "; type = " + type);
             }
         } else if (bsmArg instanceof Handle) {
             Handle handle = (Handle) bsmArg;
@@ -394,7 +402,7 @@ public final class Remapper {
             if (modified) {
                 bsmArgs[index] = new Handle(handle.getTag(), hOwner, newName, desc, handle.isInterface());
             }
-        } else  if (bsmArg instanceof String && bsmArgs.length == 1) {
+        } else if (bsmArg instanceof String) {
             // Do nothing. I'm kind of surprised that I built this method modular enough that this was a straightforward fix
         } else {
             throw new IllegalArgumentException("Unexpected bsm arg class at index " + index + " for " + Arrays.toString(bsmArgs) + ". Class is " + bsmArg.getClass().getName());
@@ -416,37 +424,10 @@ public final class Remapper {
         field.name = fieldRenames.optGet(owner, field.desc, field.name);
 
         int typeType = field.desc.charAt(0);
-        boolean isObjectArray = typeType == '[';
-        int arrayDimension = 0;
-        if (isObjectArray) {
-            if (field.desc.codePointBefore(field.desc.length()) == ';') {
-                // calculate depth
-                int arrayType;
-                do {
-                    arrayType = field.desc.charAt(++arrayDimension);
-                } while (arrayType == '[');
-            } else {
-                isObjectArray = false;
-            }
-        }
-        if (isObjectArray || typeType == 'L') {
+        if (typeType == '[' || typeType == 'L') {
             // Remap descriptor
-            Type type = Type.getType(field.desc);
-            String internalName = type.getInternalName();
-            String newInternalName = oldToNewClassName.get(internalName);
-            if (newInternalName != null) {
-                if (isObjectArray) {
-                    sharedStringBuilder.setLength(arrayDimension);
-                    for (int i = 0; i < arrayDimension; i++) {
-                        sharedStringBuilder.setCharAt(i, '[');
-                    }
-                    sharedStringBuilder.append(newInternalName);
-                    sharedStringBuilder.append(';');
-                    field.desc = sharedStringBuilder.toString();
-                } else {
-                    field.desc = 'L' + newInternalName + ';';
-                }
-            }
+            sharedStringBuilder.setLength(0);
+            field.desc = remapSingleDesc(field.desc, sharedStringBuilder);
             // Remap signature
             if (field.signature != null) {
                 sharedStringBuilder.setLength(0);
@@ -588,7 +569,7 @@ public final class Remapper {
         }
         sharedStringBuilder.setLength(0);
         if (remapSignature(method.desc, sharedStringBuilder)) {
-            // The field signature and method desc system are similar enough that this works
+            // The field signature and method desc system are similar enough that this works;
             method.desc = sharedStringBuilder.toString();
         }
         if (method.signature != null) {
@@ -649,10 +630,16 @@ public final class Remapper {
                     }
                 } else if (insn instanceof MethodInsnNode) {
                     MethodInsnNode instruction = (MethodInsnNode) insn;
-                    instruction.name = methodRenames.optGet(instruction.owner, instruction.desc, instruction.name);
-                    String newOwner = oldToNewClassName.get(instruction.owner);
-                    if (newOwner != null) {
-                        instruction.owner = newOwner;
+                    boolean isArray = instruction.owner.codePointAt(0) == '[';
+                    if (!isArray) { // Javac sometimes invokes methods on array objects
+                        instruction.name = methodRenames.optGet(instruction.owner, instruction.desc, instruction.name);
+                        String newOwner = oldToNewClassName.get(instruction.owner);
+                        if (newOwner != null) {
+                            instruction.owner = newOwner;
+                        }
+                    } else {
+                        sharedStringBuilder.setLength(0);
+                        instruction.owner = remapSingleDesc(instruction.owner, sharedStringBuilder);
                     }
                     sharedStringBuilder.setLength(0);
                     if (remapSignature(instruction.desc, sharedStringBuilder)) {

@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>de.geolykt.starloader</groupId>
     <artifactId>sl-deobf</artifactId>
-    <version>0.0.1</version>
+    <version>0.0.2</version>
     <name>Starloader-Deobfuscator</name>
     <description>A bleeding edge debug information regeneration tool since noone else wanted to do this.</description>
 
