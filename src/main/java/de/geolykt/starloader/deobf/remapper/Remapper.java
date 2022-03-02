@@ -726,7 +726,7 @@ public final class Remapper {
             builder.append(remapInternalName(ownerName, sharedBuilder));
             builder.append('.');
             int indexofSpace = methodOrField.indexOf(' ');
-            if (indexofDot == -1) {
+            if (indexofSpace == -1) {
                 // Method
                 int indexofBracket = methodOrField.indexOf('(');
                 String methodName = methodOrField.substring(0, indexofBracket);
