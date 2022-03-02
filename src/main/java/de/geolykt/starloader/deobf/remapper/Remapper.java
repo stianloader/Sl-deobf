@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -694,6 +695,62 @@ public final class Remapper {
                     module.uses.set(i, remapped);
                 }
             }
+        }
+    }
+
+    /**
+     * Remaps a literal reference to a class, field or method.
+     * For classes the class will be remapped. For fields the name, owner and descriptor will be remapped.
+     * For methods name, owner and descriptor will be remapped.
+     *
+     *<p> The format of the value of the string must be:
+     * <br> {@literal "org/example/Example"} for classes
+     * <br> {@literal "org/example/Example.field Lorg/example/Type;"} for fields. The class name must be the old (unmapped) name
+     * <br> {@literal "org/example/Example.method(Lorg/example/Parameter;)Lorg/example/ReturnType;"} for methods. Class and descriptor must be the old (unmapped name).
+     * 
+     * @param The input string to remap
+     * @param sharedBuilder A string builder to reduce string builder allocations
+     * @return The remapped string
+     */
+    @SuppressWarnings("null")
+    @NotNull
+    public String remapReference(@NotNull String string, @NotNull StringBuilder sharedBuilder) {
+        sharedBuilder.setLength(0);
+        int indexofDot = string.indexOf('.');
+        if (indexofDot == -1) {
+            return remapInternalName(string, sharedBuilder);
+        } else {
+            StringBuilder builder = new StringBuilder();
+            String methodOrField = string.substring(indexofDot + 1);
+            String ownerName = string.substring(0, indexofDot);
+            builder.append(remapInternalName(ownerName, sharedBuilder));
+            builder.append('.');
+            int indexofSpace = methodOrField.indexOf(' ');
+            if (indexofDot == -1) {
+                // Method
+                int indexofBracket = methodOrField.indexOf('(');
+                String methodName = methodOrField.substring(0, indexofBracket);
+                String methodDesc = methodOrField.substring(indexofBracket);
+                methodName = this.methodRenames.optGet(ownerName, methodDesc, methodName);
+                sharedBuilder.setLength(0);
+                builder.append(methodName);
+                if (remapSignature(methodDesc, sharedBuilder)) {
+                    builder.append(sharedBuilder.toString());
+                } else {
+                    builder.append(methodDesc);
+                }
+            } else {
+                // Field
+                String fieldName = methodOrField.substring(0, indexofSpace);
+                String fieldDesc = methodOrField.substring(++indexofSpace);
+                fieldName = this.fieldRenames.optGet(ownerName, fieldDesc, fieldName);
+                sharedBuilder.setLength(0);
+                fieldDesc = remapSingleDesc(fieldDesc, sharedBuilder);
+                builder.append(fieldName);
+                builder.append(' ');
+                builder.append(fieldDesc);
+            }
+            return builder.toString();
         }
     }
 

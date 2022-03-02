@@ -1598,7 +1598,6 @@ public class Oaktree {
                 nameToNode.put(node.name, node);
             }
         });
-        System.out.println("Oaktree indexed class files!");
     }
 
     /**
@@ -1952,7 +1951,6 @@ public class Oaktree {
     }
 
     public void write(OutputStream out) throws IOException {
-        System.out.println("Exporting...");
         JarOutputStream jarOut = new JarOutputStream(out);
         for (ClassNode node : nodes) {
             ClassWriter writer = new ClassWriter(0);
@@ -1962,6 +1960,5 @@ public class Oaktree {
             jarOut.closeEntry();
         }
         jarOut.close();
-        System.out.println("Exported!");
     }
 }
