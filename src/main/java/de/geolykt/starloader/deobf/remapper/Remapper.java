@@ -101,6 +101,55 @@ public final class Remapper {
     }
 
     /**
+     * Remaps a class name.
+     *
+     * @param name The old (unmapped) class name
+     * @return The new (remapped) class name
+     */
+    @NotNull
+    public String getRemappedClassName(@NotNull String name) {
+        String s = oldToNewClassName.get(name);
+        if (s == null) {
+            return name;
+        }
+        return s;
+    }
+
+    /**
+     * Remaps a field descriptor.
+     *
+     * @param fieldDesc The old (unmapped) field descriptor
+     * @param sharedBuilder A shared cached string builder. The contents of the string builder are wiped and after the invocation the contents are undefined
+     * @return The new (remapped) field descriptor. It <b>can</b> be identity identical to the "fieldDesc" if it didn't need to be altered
+     */
+    @SuppressWarnings("null")
+    @NotNull
+    public String getRemappedFieldDescriptor(@NotNull String fieldDesc, @NotNull StringBuilder sharedBuilder) {
+        sharedBuilder.setLength(0);
+        return remapSingleDesc(fieldDesc, sharedBuilder);
+    }
+
+    /**
+     * Remaps a method descriptor.
+     *
+     * @param methodDesc The old (unmapped) method descriptor
+     * @param sharedBuilder A shared cached string builder. The contents of the string builder are wiped and after the invocation the contents are undefined
+     * @return The new (remapped) method descriptor. It <b>can</b> be identity identical to the "methodDesc" if it didn't need to be altered
+     */
+    @NotNull
+    public String getRemappedMethodDescriptor(@NotNull String methodDesc, @NotNull StringBuilder sharedBuilder) {
+        sharedBuilder.setLength(0);
+        if (!remapSignature(methodDesc, sharedBuilder)) {
+            return methodDesc;
+        }
+        String s = sharedBuilder.toString();
+        if (s == null) {
+            throw new InternalError();
+        }
+        return s;
+    }
+
+    /**
      * Processes all remap orders and clears the remap orders afterwards. The classes that need to be processed remain in the targets
      * list until {@link #clearTargets()} is invoked. This allows for reusability of the same remapper instance.
      * Class names are remapped last.
@@ -412,13 +461,24 @@ public final class Remapper {
 
     /**
      * Remaps the name of all target class nodes once {@link #process()} is called.
-     * Class names are remapped alongside method / fields how technically they are remapped last.
+     * Class names are remapped alongside method / fields however technically they are remapped last.
      *
      * @param oldName The old internal class name of the class to remap
      * @param newName The new internal class name of the class to remap
      */
     public void remapClassName(String oldName, String newName) {
         oldToNewClassName.put(oldName, newName);
+    }
+
+    /**
+     * Remaps the name of all target class nodes once {@link #process()} is called.
+     * Class names are remapped alongside method / fields however technically they are remapped last.
+     * This is a bulk method. And is similar to calling {@link #remapClassName(String, String)}.
+     *
+     * @param mappings A map that represents all the class remaps. Keys are old names, values are new names.
+     */
+    public void remapClassNames(Map<String, String> mappings) {
+        oldToNewClassName.putAll(mappings);
     }
 
     private void remapField(String owner, FieldNode field, StringBuilder sharedStringBuilder) {
