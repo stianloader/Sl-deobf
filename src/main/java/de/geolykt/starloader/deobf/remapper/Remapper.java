@@ -320,7 +320,7 @@ public final class Remapper {
                     throw new IOException("Illegal block count. Got " + blocks.length
                             + " but expected 5 due to the METHOD or FIELD modifier. Line: " + pureLine);
                 }
-                name = Optional.of(methodRenames.optGet(targetClass, blocks[3], blocks[3]));
+                name = Optional.of(methodRenames.optGet(targetClass, blocks[4], blocks[3]));
                 sb.setLength(0);
                 remapSignature(blocks[4], sb);
                 desc = Optional.of(sb.toString());
