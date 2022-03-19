@@ -165,25 +165,30 @@ public class StackWalker {
                 }
             } else if (insn instanceof LdcInsnNode) {
                 LdcInsnNode ldc = (LdcInsnNode) insn;
+                String typeDescriptor;
                 if (ldc.cst instanceof Integer) {
-                    stack.add(StackElement.INT);
+                    typeDescriptor = "I";
                 } else if (ldc.cst instanceof Long) {
-                    stack.add(StackElement.LONG);
+                    typeDescriptor = "J";
                 } else if (ldc.cst instanceof Float) {
-                    stack.add(StackElement.FLOAT);
+                    typeDescriptor = "F";
                 } else if (ldc.cst instanceof String) {
-                    stack.add(StackElement.STRING);
+                    typeDescriptor = "Ljava/lang/String;";
                 } else if (ldc.cst instanceof Double) {
-                    stack.add(StackElement.DOUBLE);
+                    typeDescriptor = "D";
                 } else if (ldc.cst instanceof Type) {
-                    stack.add(StackElement.CLASS);
+                    typeDescriptor = "Ljava/lang/Class;";
                 } else if (ldc.cst instanceof Handle) {
                     System.err.println(ldc.cst);
                     throw new IllegalStateException();
                 } else if (ldc.cst instanceof ConstantDynamic) {
                     System.err.println(ldc.cst);
                     throw new IllegalStateException();
+                } else {
+                    throw new UnsupportedOperationException("Unimplemented type: " + ldc.cst.getClass().descriptorString());
                 }
+
+                stack.add(new StackElement(ElementSource.ofLdc(ldc), typeDescriptor));
             } else if (insn instanceof MethodInsnNode) {
                 MethodInsnNode methodInsn = (MethodInsnNode) insn;
 

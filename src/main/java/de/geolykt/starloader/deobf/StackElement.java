@@ -4,6 +4,7 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 
 public class StackElement {
@@ -17,10 +18,14 @@ public class StackElement {
         FRAME,
         FIELD,
         THIS_REFERENCE,
-        CASTED;
+        CASTED,
+        LDC;
     }
 
     public static class ElementSource {
+
+        private static final ElementSource UNDEFINED_SOURCE = new ElementSource(ElementSourceType.UNDEFINED, null);
+
         public final Object data;
         public final ElementSourceType type;
 
@@ -38,7 +43,7 @@ public class StackElement {
         }
 
         public static ElementSource undefined() {
-            return new ElementSource(ElementSourceType.UNDEFINED, null);
+            return UNDEFINED_SOURCE;
         }
 
         public static ElementSource ofFrame(FrameNode frame, int index) {
@@ -51,6 +56,10 @@ public class StackElement {
 
         public static ElementSource ofInvokeDynamic(InvokeDynamicInsnNode insn) {
             return new ElementSource(ElementSourceType.INVOKE_DYNAMIC_RETURN, insn);
+        }
+
+        public static ElementSource ofLdc(LdcInsnNode insn) {
+            return new ElementSource(ElementSourceType.LDC, insn);
         }
 
         public static ElementSource ofField(FieldInsnNode insn) {
@@ -100,6 +109,17 @@ public class StackElement {
                 throw new IllegalStateException("Must be of FRAME type!");
             }
             return (Integer) ((Object[]) data)[1];
+        }
+
+        public Object getLdcConstant() {
+            return getLdcInstruction().cst;
+        }
+
+        public LdcInsnNode getLdcInstruction() {
+            if (type != ElementSourceType.LDC) {
+                throw new IllegalStateException("Must be of LDC type!");
+            }
+            return (LdcInsnNode) data;
         }
 
         public FrameNode getFrameNode() {
