@@ -3,6 +3,7 @@ package de.geolykt.starloader.deobf;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.NoSuchElementException;
 import java.util.Queue;
 import java.util.Spliterator;
@@ -28,9 +29,9 @@ import java.util.Stack;
  */
 public class LIFOQueue<E> implements Iterable<E> {
 
-    private final Deque<E> delegate;
+    private final LinkedList<E> delegate;
 
-    public LIFOQueue(Deque<E> delegate) {
+    public LIFOQueue(LinkedList<E> delegate) {
         this.delegate = delegate;
     }
 
@@ -68,6 +69,15 @@ public class LIFOQueue<E> implements Iterable<E> {
      * @return The delegate Deque
      */
     public Deque<E> getDelegate() {
+        return delegate;
+    }
+
+    /**
+     * Obtains the {@link LinkedList} delegate for more advanced operations.
+     *
+     * @return The delegate {@link LinkedList}.
+     */
+    public LinkedList<E> getDelegateList() {
         return delegate;
     }
 

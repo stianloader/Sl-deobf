@@ -1,8 +1,8 @@
 package de.geolykt.starloader.deobf;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
@@ -75,7 +75,7 @@ public class StackWalker {
         }
 
         AbstractInsnNode insn = method.instructions.getFirst();
-        LIFOQueue<StackElement> stack = new LIFOQueue<>(new ArrayDeque<>(method.maxStack));
+        LIFOQueue<StackElement> stack = new LIFOQueue<>(new LinkedList<>());
         List<StackElement> locals = new ArrayList<>(method.maxLocals);
         int asmLocalsFrameSize;
 
