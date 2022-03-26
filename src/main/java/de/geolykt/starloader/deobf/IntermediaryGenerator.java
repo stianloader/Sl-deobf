@@ -74,6 +74,7 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
         this.output = output;
         if (nodes != null) {
             this.nodes.addAll(nodes);
+            this.remapper.addTargets(nodes);
         }
     }
 
@@ -124,7 +125,6 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
                 }
             }
             inJar.close();
-            remapper.addTargets(nodes);
         }
     }
 
@@ -311,7 +311,7 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
     }
 
     public List<ClassNode> getAsClassNodes() {
-        return nodes;
+        return Collections.unmodifiableList(this.nodes);
     }
 
     private Map<String, List<String>> invertHierarchy(Map<String, List<String>> allSubtypes) {
