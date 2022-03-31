@@ -28,10 +28,12 @@ public class AccessWidenerReader implements AutoCloseable {
 
     private final AccessTransformInfo atInfo;
     private final BufferedReader br;
+    private final boolean runtime;
 
-    public AccessWidenerReader(AccessTransformInfo atInfo, InputStream stream) {
+    public AccessWidenerReader(AccessTransformInfo atInfo, InputStream stream, boolean runtime) {
         this.br = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
         this.atInfo = atInfo;
+        this.runtime = runtime;
     }
 
     public void readHeader() throws IllegalHeaderException, IOException {
@@ -72,8 +74,16 @@ public class AccessWidenerReader implements AutoCloseable {
             return true;
         }
         String[] blocks = pureLine.trim().split("\\s+");
+
+        boolean compileOnly = false;
+        if (blocks.length != 0 && (compileOnly = blocks[0].equalsIgnoreCase("compileOnly"))) {
+            String[] copy = new String[blocks.length - 1];
+            System.arraycopy(blocks, 1, copy, 0, copy.length);
+            blocks = copy;
+        }
+
         if (blocks.length != 3 && blocks.length != 5) {
-            throw new IOException("Illegal block count. Got " + blocks.length + " expected 3 or 5. Line: " + pureLine);
+            throw new IOException("Illegal block count. Got " + blocks.length + " expected 3 or 5 blocks. Line content: " + pureLine);
         }
 
         String targetClass = blocks[2].replace('.', '/');
@@ -115,25 +125,27 @@ public class AccessWidenerReader implements AutoCloseable {
 
         switch (operation.toLowerCase(Locale.ROOT)) {
         case "accessible":
-            modifier = new AccessFlagModifier.AccessibleModifier(memberType, targetClass, name, desc);
+            modifier = new AccessFlagModifier.AccessibleModifier(memberType, targetClass, name, desc, compileOnly);
             break;
         case "extendable":
-            modifier = new AccessFlagModifier.ExtendableModifier(memberType, targetClass, name, desc);
+            modifier = new AccessFlagModifier.ExtendableModifier(memberType, targetClass, name, desc, compileOnly);
             break;
         case "mutable":
-            modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_FINAL, "mutable");
+            modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_FINAL, "mutable", compileOnly);
             break;
         case "natural":
-            modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_SYNTHETIC, "natural");
+            modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_SYNTHETIC, "natural", compileOnly);
             break;
         case "denumerised":
-            modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_ENUM, "denumerised");
+            modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_ENUM, "denumerised", compileOnly);
             break;
         default:
             throw new UnsupportedOperationException("Unknown mode: " + operation);
         }
 
-        atInfo.modifiers.add(modifier);
+        if (!(runtime && compileOnly)) {
+            atInfo.modifiers.add(modifier);
+        }
         return true;
     }
 

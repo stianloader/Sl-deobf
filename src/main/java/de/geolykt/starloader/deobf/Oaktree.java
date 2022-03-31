@@ -2018,7 +2018,7 @@ public class Oaktree {
                         }
                     }
                     if (ch1 == 0xCA && ch2 == 0xFE && ch3 == 0xBA && ch4 == 0xBE) {
-                        // every class file should begin with CAFEBABE
+                        // every valid class file must begin with CAFEBABE
                         continue;
                     }
                 }

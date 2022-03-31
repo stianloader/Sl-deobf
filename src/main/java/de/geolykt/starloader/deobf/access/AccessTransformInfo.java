@@ -2,6 +2,7 @@ package de.geolykt.starloader.deobf.access;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -9,6 +10,7 @@ import java.util.function.Consumer;
 
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import de.geolykt.starloader.deobf.access.AccessFlagModifier.Type;
@@ -22,6 +24,8 @@ public final class AccessTransformInfo {
     }
 
     public void apply(Map<String, ClassNode> nodes, Consumer<String> warnLogger) {
+        Map<String, List<AccessFlagModifier>> innerClasses = new HashMap<>();
+
         for (AccessFlagModifier flag : modifiers) {
             ClassNode node = nodes.get(flag.clazz);
             if (node == null) {
@@ -30,6 +34,12 @@ public final class AccessTransformInfo {
             }
             if (flag.type == Type.CLASS) {
                 node.access = flag.apply(node.access);
+                for (InnerClassNode icn : node.innerClasses) {
+                    if (icn.name.equals(node.name)) {
+                        icn.access = flag.apply(icn.access);
+                        innerClasses.computeIfAbsent(node.name, key -> new ArrayList<>()).add(flag);
+                    }
+                }
                 continue;
             } else if (flag.type == Type.FIELD) {
                 boolean found = false;
@@ -54,7 +64,20 @@ public final class AccessTransformInfo {
                     warnLogger.accept("Cannot find method required by access widener: " + flag.toAccessWidenerString());
                 }
             } else {
-                throw new IllegalStateException(Objects.toString(flag.type));
+                throw new IllegalStateException("Unkown type: " + Objects.toString(flag.type));
+            }
+        }
+
+        if (!innerClasses.isEmpty()) {
+            for (ClassNode node : nodes.values()) {
+                for (InnerClassNode icn : node.innerClasses) {
+                    List<AccessFlagModifier> flags = innerClasses.get(icn.name);
+                    if (flags != null) {
+                        for (AccessFlagModifier modifier : flags) {
+                            icn.access = modifier.apply(icn.access);
+                        }
+                    }
+                }
             }
         }
     }

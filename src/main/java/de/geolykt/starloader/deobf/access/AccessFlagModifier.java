@@ -19,11 +19,12 @@ public abstract class AccessFlagModifier {
     }
 
     public final Type type;
+    public final boolean isCompileOnly;
     public final String clazz;
     public final Optional<String> name;
     public final Optional<String> descriptor;
 
-    public AccessFlagModifier(Type type, String clazz, Optional<String> name, Optional<String> descriptor) {
+    public AccessFlagModifier(Type type, String clazz, Optional<String> name, Optional<String> descriptor, boolean compileOnly) {
         this.type = type;
         this.clazz = clazz;
         this.name = name;
@@ -35,6 +36,7 @@ public abstract class AccessFlagModifier {
         } else if (name.isEmpty() || descriptor.isEmpty()) {
             throw new IllegalArgumentException("Both name and descriptor must be present for anything but the CLASS type.");
         }
+        this.isCompileOnly = compileOnly;
     }
 
     public abstract int apply(int oldAccessFlag);
@@ -42,8 +44,8 @@ public abstract class AccessFlagModifier {
 
     public static class AccessibleModifier extends AccessFlagModifier {
 
-        public AccessibleModifier(Type type, String clazz, Optional<String> name, Optional<String> descriptor) {
-            super(type, clazz, name, descriptor);
+        public AccessibleModifier(Type type, String clazz, Optional<String> name, Optional<String> descriptor, boolean compileOnly) {
+            super(type, clazz, name, descriptor, compileOnly);
         }
 
         @Override
@@ -63,8 +65,8 @@ public abstract class AccessFlagModifier {
 
     public static class ExtendableModifier extends AccessFlagModifier {
 
-        public ExtendableModifier(Type type, String clazz, Optional<String> name, Optional<String> descriptor) {
-            super(type, clazz, name, descriptor);
+        public ExtendableModifier(Type type, String clazz, Optional<String> name, Optional<String> descriptor, boolean compileOnly) {
+            super(type, clazz, name, descriptor, compileOnly);
         }
 
         @Override
@@ -92,8 +94,8 @@ public abstract class AccessFlagModifier {
         private final int flag;
         private final String awMode;
 
-        public RemoveFlagModifier(Type type, String clazz, Optional<String> name, Optional<String> descriptor, int flag, String awMode) {
-            super(type, clazz, name, descriptor);
+        public RemoveFlagModifier(Type type, String clazz, Optional<String> name, Optional<String> descriptor, int flag, String awMode, boolean compileOnly) {
+            super(type, clazz, name, descriptor, compileOnly);
             this.flag = flag;
             this.awMode = awMode;
         }

@@ -270,7 +270,7 @@ public final class Remapper {
         oldToNewClassName.clear();
     }
 
-    public void remapAccesswidener(InputStream input, OutputStream output) throws IOException {
+    public void remapAccesswidener(InputStream input, OutputStream output, boolean runtime) throws IOException {
         BufferedReader br = new BufferedReader(new InputStreamReader(input));
         BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(output));
         StringBuilder sb = new StringBuilder();
@@ -288,6 +288,14 @@ public final class Remapper {
                 continue;
             }
             String[] blocks = pureLine.trim().split("\\s+");
+
+            boolean compileOnly = false;
+            if (blocks.length != 0 && (compileOnly = blocks[0].equalsIgnoreCase("compileOnly"))) {
+                String[] copy = new String[blocks.length - 1];
+                System.arraycopy(blocks, 1, copy, 0, copy.length);
+                blocks = copy;
+            }
+
             if (blocks.length != 3 && blocks.length != 5) {
                 throw new IOException("Illegal block count. Got " + blocks.length + " expected 3 or 5. Line: " + pureLine);
             }
@@ -334,26 +342,31 @@ public final class Remapper {
 
             switch (operation.toLowerCase(Locale.ROOT)) {
             case "accessible":
-                modifier = new AccessFlagModifier.AccessibleModifier(memberType, targetClass, name, desc);
+                modifier = new AccessFlagModifier.AccessibleModifier(memberType, targetClass, name, desc, compileOnly);
                 break;
             case "extendable":
-                modifier = new AccessFlagModifier.ExtendableModifier(memberType, targetClass, name, desc);
+                modifier = new AccessFlagModifier.ExtendableModifier(memberType, targetClass, name, desc, compileOnly);
                 break;
             case "mutable":
-                modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_FINAL, "mutable");
+                modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_FINAL, "mutable", compileOnly);
                 break;
             case "natural":
-                modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_SYNTHETIC, "natural");
+                modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_SYNTHETIC, "natural", compileOnly);
                 break;
             case "denumerised":
-                modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_ENUM, "denumerised");
+                modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_ENUM, "denumerised", compileOnly);
                 break;
             default:
                 throw new UnsupportedOperationException("Unknown mode: " + operation);
             }
 
-            bw.write(modifier.toAccessWidenerString());
-            bw.newLine();
+            if (!(runtime && compileOnly)) {
+                bw.write(modifier.toAccessWidenerString());
+                bw.newLine();
+            } else {
+                bw.write("#compileOnly " + modifier.toAccessWidenerString());
+                bw.newLine();
+            }
         }
         br.close();
         bw.close();
