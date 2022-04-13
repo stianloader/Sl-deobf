@@ -11,12 +11,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.Handle;
@@ -54,6 +56,7 @@ import de.geolykt.starloader.deobf.access.AccessFlagModifier;
 public final class Remapper {
 
     private final FieldRenameMap fieldRenames = new FieldRenameMap();
+    private final FieldRenameMap hierarchisedFieldRenames = new FieldRenameMap();
     private final MethodRenameMap methodRenames = new MethodRenameMap();
     private final Map<String, ClassNode> nameToNode = new HashMap<>();
     private final Map<String, String> oldToNewClassName = new HashMap<>();
@@ -156,6 +159,66 @@ public final class Remapper {
      */
     public void process() {
         StringBuilder sharedStringBuilder = new StringBuilder();
+
+        hierarchisedFieldRenames.clear();
+        {
+            Map<String, Set<String>> children = new HashMap<>();
+            for (ClassNode node : targets) {
+                children.compute(node.superName, (k, v) -> {
+                    if (v == null) {
+                        v = new HashSet<>();
+                    }
+                    v.add(node.name);
+                    return v;
+                });
+            }
+            boolean modified;
+            do {
+                modified = false;
+                for (ClassNode node : targets) {
+                    Set<String> childNodes = children.get(node.name);
+                    if (childNodes == null) {
+                        continue;
+                    }
+                    Set<String> superChildNodes = children.get(node.superName);
+                    modified |= superChildNodes.addAll(childNodes);
+                }
+            } while (modified);
+            for (ClassNode node : targets) {
+                for (FieldNode field : node.fields) {
+                    String newName = fieldRenames.get(node.name, field.desc, field.name);
+                    if (newName == null) {
+                        continue;
+                    }
+                    hierarchisedFieldRenames.put(node.name, field.desc, field.name, newName);
+                    Set<String> childNodes = children.get(node.name);
+                    if (childNodes == null) {
+                        continue;
+                    }
+                    // Apparently ACC_STATIC does not affect the propagation rules for fields
+                    // I fear that this might lead to a few issues, but what can one do against that?
+                    if ((field.access & Opcodes.ACC_PROTECTED) != 0 || ((field.access) & Opcodes.ACC_PUBLIC) != 0) {
+                        for (String child : childNodes) {
+                            hierarchisedFieldRenames.put(child, field.desc, field.name, newName);
+                        }
+                    } else if ((field.access & Opcodes.ACC_PRIVATE) == 0) {
+                        // Package-protected
+                        int lastIndexOfSlash = node.name.lastIndexOf('/');
+                        String packageName = node.name.substring(0, node.name.lastIndexOf('/'));
+                        for (String child : childNodes) {
+                            if (child.length() <= lastIndexOfSlash
+                                    || child.codePointAt(lastIndexOfSlash) != '/'
+                                    || child.indexOf('/', lastIndexOfSlash + 1) != -1
+                                    || !child.startsWith(packageName)) {
+                                continue;
+                            }
+                            hierarchisedFieldRenames.put(child, field.desc, field.name, newName);
+                        }
+                    }
+                }
+            }
+        }
+
         IdentityHashMap<ModuleNode, Boolean> remappedModules = new IdentityHashMap<>();
         for (ClassNode node : targets) {
             for (FieldNode field : node.fields) {
@@ -407,7 +470,7 @@ public final class Remapper {
         } else if (value instanceof String[]) {
             String[] enumvals = (String[]) value;
             String internalName = enumvals[0].substring(1, enumvals[0].length() - 1);
-            enumvals[1] = fieldRenames.optGet(internalName, enumvals[0], enumvals[1]);
+            enumvals[1] = hierarchisedFieldRenames.optGet(internalName, enumvals[0], enumvals[1]);
             String newInternalName = oldToNewClassName.get(internalName);
             if (newInternalName != null) {
                 enumvals[0] = 'L' + newInternalName + ';';
@@ -495,7 +558,7 @@ public final class Remapper {
     }
 
     private void remapField(String owner, FieldNode field, StringBuilder sharedStringBuilder) {
-        field.name = fieldRenames.optGet(owner, field.desc, field.name);
+        field.name = hierarchisedFieldRenames.optGet(owner, field.desc, field.name);
 
         int typeType = field.desc.charAt(0);
         if (typeType == '[' || typeType == 'L') {
@@ -517,6 +580,9 @@ public final class Remapper {
      * The owner and desc strings must be valid for the current class names, i. e. without {@link #remapClassName(String, String)}
      * and {@link #process()} applied. The fields are not actually renamed until {@link #process()} is invoked.
      * These tasks are however removed as soon as {@link #process()} is invoked.
+     * Unlike {@link #remapMethod(String, String, String, String)}, this method will do it's best to
+     * propagate field renames to child classes. However it may miss a few if not all classes are declared as targets.
+     * However one would still be able to explicitly add a remap via this method.
      *
      * @param owner The internal name of the current owner of the field
      * @param desc The descriptor string of the field entry
@@ -665,17 +731,8 @@ public final class Remapper {
             while (insn != null) {
                 if (insn instanceof FieldInsnNode) {
                     FieldInsnNode instruction = (FieldInsnNode) insn;
-                    String fieldName = fieldRenames.get(instruction.owner, instruction.desc, instruction.name);
-                    if (fieldName == null) {
-                        // Yea, javac is a bit strange
-                        // I assume that this only happens for enums, but we need to be aware of this
-                        if (owner.name.equals(instruction.owner)) {
-                            fieldName = fieldRenames.get(owner.superName, instruction.desc, instruction.name);
-                            if (fieldName != null) {
-                                instruction.name = fieldName;
-                            }
-                        }
-                    } else {
+                    String fieldName = hierarchisedFieldRenames.get(instruction.owner, instruction.desc, instruction.name);
+                    if (fieldName != null) {
                         instruction.name = fieldName;
                     }
                     instruction.desc = remapSingleDesc(instruction.desc, sharedStringBuilder);
@@ -816,7 +873,7 @@ public final class Remapper {
                 // Field
                 String fieldName = methodOrField.substring(0, indexofSpace);
                 String fieldDesc = methodOrField.substring(++indexofSpace);
-                fieldName = this.fieldRenames.optGet(ownerName, fieldDesc, fieldName);
+                fieldName = this.hierarchisedFieldRenames.optGet(ownerName, fieldDesc, fieldName);
                 sharedBuilder.setLength(0);
                 fieldDesc = remapSingleDesc(fieldDesc, sharedBuilder);
                 builder.append(fieldName);
