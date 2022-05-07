@@ -12,8 +12,8 @@ final class FieldRenameMap {
     public FieldRenameMap() {
     }
 
-    public void put(String owner, String descriptor, String name, String newName) {
-        renames.put(new FieldReference(owner, descriptor, name), newName);
+    public void clear() {
+        renames.clear();
     }
 
     public String get(String owner, String descriptor, String oldName) {
@@ -28,11 +28,20 @@ final class FieldRenameMap {
         return renames.getOrDefault(new FieldReference(owner, descriptor, oldName), oldName);
     }
 
-    public int size() {
-        return renames.size();
+    public void put(String owner, String descriptor, String name, String newName) {
+        renames.put(new FieldReference(owner, descriptor, name), newName);
     }
 
-    public void clear() {
-        renames.clear();
+    /**
+     * Merges the entries of a {@link FieldRenameMap} into this map. Does not override already existing entries.
+     *
+     * @param other the rename map to merge
+     */
+    public void putAllIfAbsent(FieldRenameMap other) {
+        other.renames.forEach(this.renames::putIfAbsent);
+    }
+
+    public int size() {
+        return renames.size();
     }
 }

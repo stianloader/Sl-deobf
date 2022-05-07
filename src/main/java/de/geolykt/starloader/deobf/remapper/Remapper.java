@@ -62,6 +62,8 @@ public final class Remapper {
     private final Map<String, String> oldToNewClassName = new HashMap<>();
     private final List<ClassNode> targets = new ArrayList<>();
 
+    private boolean fieldRenameHierarchyOutdated = false;
+
     /**
      * Adds a single class node to remap
      *
@@ -91,6 +93,66 @@ public final class Remapper {
     public void clearTargets() {
         targets.clear();
         nameToNode.clear();
+    }
+
+    private void createFieldHierarchy() {
+        hierarchisedFieldRenames.clear();
+        Map<String, Set<String>> children = new HashMap<>();
+        for (ClassNode node : targets) {
+            children.compute(node.superName, (k, v) -> {
+                if (v == null) {
+                    v = new HashSet<>();
+                }
+                v.add(node.name);
+                return v;
+            });
+        }
+        boolean modified;
+        do {
+            modified = false;
+            for (ClassNode node : targets) {
+                Set<String> childNodes = children.get(node.name);
+                if (childNodes == null) {
+                    continue;
+                }
+                Set<String> superChildNodes = children.get(node.superName);
+                modified |= superChildNodes.addAll(childNodes);
+            }
+        } while (modified);
+        for (ClassNode node : targets) {
+            for (FieldNode field : node.fields) {
+                String newName = fieldRenames.get(node.name, field.desc, field.name);
+                if (newName == null) {
+                    continue;
+                }
+                hierarchisedFieldRenames.put(node.name, field.desc, field.name, newName);
+                Set<String> childNodes = children.get(node.name);
+                if (childNodes == null) {
+                    continue;
+                }
+                // Apparently ACC_STATIC does not affect the propagation rules for fields
+                // I fear that this might lead to a few issues, but what can one do against that?
+                if ((field.access & Opcodes.ACC_PROTECTED) != 0 || ((field.access) & Opcodes.ACC_PUBLIC) != 0) {
+                    for (String child : childNodes) {
+                        hierarchisedFieldRenames.put(child, field.desc, field.name, newName);
+                    }
+                } else if ((field.access & Opcodes.ACC_PRIVATE) == 0) {
+                    // Package-protected
+                    int lastIndexOfSlash = node.name.lastIndexOf('/');
+                    String packageName = node.name.substring(0, node.name.lastIndexOf('/'));
+                    for (String child : childNodes) {
+                        if (child.length() <= lastIndexOfSlash
+                                || child.codePointAt(lastIndexOfSlash) != '/'
+                                || child.indexOf('/', lastIndexOfSlash + 1) != -1
+                                || !child.startsWith(packageName)) {
+                            continue;
+                        }
+                        hierarchisedFieldRenames.put(child, field.desc, field.name, newName);
+                    }
+                }
+            }
+        }
+        hierarchisedFieldRenames.putAllIfAbsent(fieldRenames);
     }
 
     /**
@@ -160,63 +222,9 @@ public final class Remapper {
     public void process() {
         StringBuilder sharedStringBuilder = new StringBuilder();
 
-        hierarchisedFieldRenames.clear();
-        {
-            Map<String, Set<String>> children = new HashMap<>();
-            for (ClassNode node : targets) {
-                children.compute(node.superName, (k, v) -> {
-                    if (v == null) {
-                        v = new HashSet<>();
-                    }
-                    v.add(node.name);
-                    return v;
-                });
-            }
-            boolean modified;
-            do {
-                modified = false;
-                for (ClassNode node : targets) {
-                    Set<String> childNodes = children.get(node.name);
-                    if (childNodes == null) {
-                        continue;
-                    }
-                    Set<String> superChildNodes = children.get(node.superName);
-                    modified |= superChildNodes.addAll(childNodes);
-                }
-            } while (modified);
-            for (ClassNode node : targets) {
-                for (FieldNode field : node.fields) {
-                    String newName = fieldRenames.get(node.name, field.desc, field.name);
-                    if (newName == null) {
-                        continue;
-                    }
-                    hierarchisedFieldRenames.put(node.name, field.desc, field.name, newName);
-                    Set<String> childNodes = children.get(node.name);
-                    if (childNodes == null) {
-                        continue;
-                    }
-                    // Apparently ACC_STATIC does not affect the propagation rules for fields
-                    // I fear that this might lead to a few issues, but what can one do against that?
-                    if ((field.access & Opcodes.ACC_PROTECTED) != 0 || ((field.access) & Opcodes.ACC_PUBLIC) != 0) {
-                        for (String child : childNodes) {
-                            hierarchisedFieldRenames.put(child, field.desc, field.name, newName);
-                        }
-                    } else if ((field.access & Opcodes.ACC_PRIVATE) == 0) {
-                        // Package-protected
-                        int lastIndexOfSlash = node.name.lastIndexOf('/');
-                        String packageName = node.name.substring(0, node.name.lastIndexOf('/'));
-                        for (String child : childNodes) {
-                            if (child.length() <= lastIndexOfSlash
-                                    || child.codePointAt(lastIndexOfSlash) != '/'
-                                    || child.indexOf('/', lastIndexOfSlash + 1) != -1
-                                    || !child.startsWith(packageName)) {
-                                continue;
-                            }
-                            hierarchisedFieldRenames.put(child, field.desc, field.name, newName);
-                        }
-                    }
-                }
-            }
+        if (fieldRenameHierarchyOutdated) {
+            createFieldHierarchy();
+            fieldRenameHierarchyOutdated = false;
         }
 
         IdentityHashMap<ModuleNode, Boolean> remappedModules = new IdentityHashMap<>();
@@ -592,6 +600,7 @@ public final class Remapper {
      */
     public void remapField(String owner, String desc, String oldName, String newName) {
         fieldRenames.put(owner, desc, oldName, newName);
+        fieldRenameHierarchyOutdated = true;
     }
 
     private void remapFrameNode(FrameNode frameNode, StringBuilder sharedStringBuilder) {
@@ -845,6 +854,10 @@ public final class Remapper {
     @SuppressWarnings("null")
     @NotNull
     public String remapReference(@NotNull String string, @NotNull StringBuilder sharedBuilder) {
+        if (fieldRenameHierarchyOutdated) {
+            createFieldHierarchy();
+            fieldRenameHierarchyOutdated = false;
+        }
         sharedBuilder.setLength(0);
         int indexofDot = string.indexOf('.');
         if (indexofDot == -1) {
