@@ -1,7 +1,7 @@
 package de.geolykt.starloader.deobf;
 
 /**
- * Utility for dissecting a descriptor string.
+ * Utility for dissecting a method descriptor string.
  */
 public class DescString {
 

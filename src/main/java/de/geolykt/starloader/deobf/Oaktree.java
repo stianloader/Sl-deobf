@@ -25,7 +25,9 @@ import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
@@ -131,6 +133,52 @@ public class Oaktree {
 
     public static final int VISIBILITY_MODIFIERS = Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED | Opcodes.ACC_PUBLIC;
 
+    /**
+     * Obtains the internal name of the class that is returned by a given method descriptor.
+     * If not an object (or array) is returned as according to the method descriptor, null
+     * is returned by this method.
+     * For arrays, the leading "[" are removed - so it is not possible to differ between array and
+     * "normal" object.
+     *
+     * <p>This method was created in anticipation of L-World.
+     *
+     * @param methodDesc The method descriptor
+     * @return The internal name of the object or array returned by the method.
+     */
+    @Nullable
+    @Contract(pure = true)
+    private static final String getReturnedClass(String methodDesc) {
+        if (methodDesc.codePointBefore(methodDesc.length()) != ';') {
+            return null;
+        }
+        int closingBracket = methodDesc.indexOf(')');
+        if (closingBracket == -1) {
+            throw new IllegalArgumentException("The descriptor: \"" + methodDesc + "\" is probably not a method descriptor.");
+        }
+        int indexOfL = methodDesc.indexOf('L', closingBracket);
+        if (indexOfL != -1) {
+            return methodDesc.substring(indexOfL, methodDesc.length() - 1);
+        }
+        return null;
+    }
+
+    /**
+     * Obtains the internal name of the class or array that is described within the descriptor.
+     * If no object is embedded in there (e.g. primitives), null is returned.
+     *
+     * @param fieldDesc The field descriptor
+     * @return The internal name of the parsed class
+     */
+    @Nullable
+    @Contract(pure = true)
+    private static final String getClassName(String fieldDesc) {
+        int indexOfL = fieldDesc.indexOf('L');
+        if (++indexOfL == 0) {
+            return null;
+        }
+        return fieldDesc.substring(indexOfL, fieldDesc.length() - 1);
+    }
+
     public static void main(String[] args) {
         long start = System.currentTimeMillis();
         if (args.length < 2) {
@@ -152,7 +200,7 @@ public class Oaktree {
             oakTree.fixSwitchMaps();
             oakTree.fixForeachOnArray();
             oakTree.fixComparators(true);
-            oakTree.guessAnonymousInnerClasses();
+            oakTree.guessAnonymousClasses();
             long startStep = System.currentTimeMillis();
             oakTree.applyInnerclasses();
             System.out.println("Applied inner class nodes to referencing classes. (" + (System.currentTimeMillis() - startStep) + " ms)");
@@ -1004,6 +1052,104 @@ public class Oaktree {
     }
 
     /**
+     * Guesses the should-be inner classes of classes based on the usages of the class.
+     * This only guesses anonymous classes based on the code, but not based on the name.
+     *
+     * <p>It will not overwrite already existing relations and will not perform any changes
+     * to the class nodes.
+     * Inner class nodes must therefore be applied manually. It is advisable to run
+     * {@link Oaktree#applyInnerclasses()} afterwards.
+     *
+     * @author Geolykt
+     * @return The returned map will have the outer class as the key and the outer method as the desc.
+     */
+    @Contract(value = "-> new", pure = true)
+    public Map<String, MethodReference> guessAnonymousClasses() {
+        Map<String, MethodReference> anonymousClasses = new HashMap<>();
+
+        Set<String> potentialAnonymousClasses = new HashSet<>();
+
+        nodeLoop:
+        for (ClassNode node : nodes) {
+            if ((node.access & VISIBILITY_MODIFIERS) != 0) {
+                continue;
+            }
+            if (node.innerClasses != null) {
+                for (InnerClassNode icn : node.innerClasses) {
+                    if (icn.name.equals(node.name)) {
+                        continue nodeLoop;
+                    }
+                }
+            }
+            potentialAnonymousClasses.add(node.name);
+        }
+
+
+        for (ClassNode node : nodes) {
+            for (FieldNode field : node.fields) {
+                if ((field.access & Opcodes.ACC_SYNTHETIC) != 0) {
+                    continue;
+                }
+                String className = getClassName(field.desc);
+                if (className == null) {
+                    continue;
+                }
+                potentialAnonymousClasses.remove(className);
+                anonymousClasses.remove(className);
+            }
+
+            for (MethodNode method : node.methods) {
+                DescString descString = new DescString(method.desc);
+                while (descString.hasNext()) {
+                    String className = getClassName(descString.nextType());
+                    if (className != null && !className.equals(node.name)) {
+                        potentialAnonymousClasses.remove(className);
+                        anonymousClasses.remove(className);
+                    }
+                }
+
+                if (method.instructions != null) {
+                    AbstractInsnNode insn = method.instructions.getFirst();
+                    while (insn != null) {
+                        if (insn instanceof FieldInsnNode) {
+                            String className = getClassName(((FieldInsnNode) insn).desc);
+                            if (className != null && !className.equals(node.name)) {
+                                potentialAnonymousClasses.remove(className);
+                                anonymousClasses.remove(className);
+                            }
+                            className = ((FieldInsnNode) insn).owner;
+                            if (className != null && !className.equals(node.name)) {
+                                potentialAnonymousClasses.remove(className);
+                                anonymousClasses.remove(className);
+                            }
+                        } else if (insn instanceof MethodInsnNode) {
+                            MethodInsnNode methodInsn = (MethodInsnNode) insn;
+                            if (methodInsn.name.equals("<init>")) {
+                                if (anonymousClasses.containsKey(methodInsn.owner)) {
+                                    potentialAnonymousClasses.remove(methodInsn.owner);
+                                    anonymousClasses.remove(methodInsn.owner);
+                                } else if (potentialAnonymousClasses.contains(methodInsn.owner)) {
+                                    anonymousClasses.put(methodInsn.owner, new MethodReference(node.name, method));
+                                }
+                            } else {
+                                String returnClass = getReturnedClass(methodInsn.desc);
+                                if (returnClass != null) {
+                                    potentialAnonymousClasses.remove(returnClass);
+                                    anonymousClasses.remove(returnClass);
+                                }
+                                potentialAnonymousClasses.remove(methodInsn.owner);
+                                anonymousClasses.remove(methodInsn.owner);
+                            }
+                        }
+                        insn = insn.getNext();
+                    }
+                }
+            }
+        }
+        return anonymousClasses;
+    }
+
+    /**
      * Guesses anonymous inner classes by checking whether they have a synthetic field and if they
      * do whether they are referenced only by a single "parent" class.
      * Note: this method is VERY aggressive when it comes to adding inner classes, sometimes it adds
@@ -1011,7 +1157,10 @@ public class Oaktree {
      * be done wisely. This method will do some damage even if it does no good.
      *
      * @return The amount of guessed anonymous inner classes
+     * @deprecated The result created by this method is of questionable quality. Use {@link #guessAnonymousClasses()}
+     * instead, which has better proven reliability.
      */
+    @Deprecated(forRemoval = true, since = "0.0.2")
     public int guessAnonymousInnerClasses() {
 
         // Class name -> referenced class, method
@@ -1130,7 +1279,6 @@ public class Oaktree {
                 }
                 // Now technically, they are still inner classes. Just regular ones and they are not static ones
                 // however not adding them as a inner class has no effect in recomplieabillity so we will not really care about it just yet.
-                // TODO that being said, we should totally do it
                 String className = field.desc.substring(field.desc.lastIndexOf('[') + 2, field.desc.length() - 1);
                 candidates.remove(className);
             }
@@ -1144,6 +1292,9 @@ public class Oaktree {
                 continue;
             }
             ClassNode innerNode = nameToNode.get(inner);
+            if (innerNode == null) {
+                throw new IllegalStateException("Unable to find class: " + inner);
+            }
             ClassNode outernode = nameToNode.get(outer.getKey());
 
             MethodNode outerMethod = outer.getValue();
@@ -1151,13 +1302,13 @@ public class Oaktree {
                 continue;
             }
             boolean hasInnerClassInfoInner = false;
+            boolean hasInnerClassInfoOuter = false;
             for (InnerClassNode icn : innerNode.innerClasses) {
                 if (icn.name.equals(inner)) {
                     hasInnerClassInfoInner = true;
                     break;
                 }
             }
-            boolean hasInnerClassInfoOuter = false;
             for (InnerClassNode icn : outernode.innerClasses) {
                 if (icn.name.equals(inner)) {
                     hasInnerClassInfoOuter = true;
