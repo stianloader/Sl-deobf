@@ -32,7 +32,7 @@ public class SignatureNode {
         if (generic == null) {
             return null;
         }
-        return String.format("%s<%s>;", type, generic);
+        return type + '<' + generic + ">;";
     }
 
     @Override

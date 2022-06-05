@@ -148,7 +148,7 @@ public class Oaktree {
      */
     @Nullable
     @Contract(pure = true)
-    private static final String getReturnedClass(String methodDesc) {
+    public static final String getReturnedClass(String methodDesc) {
         if (methodDesc.codePointBefore(methodDesc.length()) != ';') {
             return null;
         }
@@ -1163,6 +1163,92 @@ public class Oaktree {
             }
         }
         return anonymousClasses;
+    }
+
+    /**
+     * Analyses the likely generic type of the return value of methods. The return value may only be an instance
+     * of {@link Collection} or an implementation of it (as defined through
+     * {@link ClassWrapperPool#isImplementingInterface(ClassWrapper, String)}).
+     *
+     * <p>To reduce the imprecision of the used algorithm following filters are put in place:
+     * <ul>
+     *   <li>The method must be static</li>
+     *   <li>The method must not already have a signature</li>
+     *   <li>The method must not have arguments</li>
+     * </ul>
+     * Due to these constraints only few methods will match. Furthermore this method internally uses rather expensive
+     * tools such as the {@link StackWalker} and the {@link ClassWrapperPool}, which means using this method
+     * may not always be beneficial.
+     *
+     * <p>This method does not modify the signatures of methods directly. This operation
+     * would need to be done by an external method.
+     *
+     * @return A map that stores the location of the method as the key and the signature type as the value.
+     * @author Geolykt
+     */
+    public Map<MethodReference, ClassWrapper> analyseLikelyMethodReturnCollectionGenerics() {
+        Map<MethodReference, ClassWrapper> signatures = new HashMap<>();
+        Map<StackElement, ClassWrapper> stackSignatureTypes = new HashMap<>();
+
+        for (ClassNode node : nodes) {
+            for (MethodNode method : node.methods) {
+                if ((method.access & Opcodes.ACC_STATIC) == 0 || method.signature != null || !method.desc.startsWith("()L") ) {
+                    continue;
+                }
+                ClassWrapper returnType = wrapperPool.get(method.desc.substring(3, method.desc.length() - 1));
+                if (!returnType.getAllImplementatingInterfaces().contains("java/util/Collection")) {
+                    continue;
+                }
+
+                stackSignatureTypes.clear();
+                MethodReference methodRef = new MethodReference(node.name, method);
+                StackWalker.walkStack(node, method, new StackWalkerConsumer() {
+
+                    @Override
+                    public void preCalculation(AbstractInsnNode instruction, LIFOQueue<StackElement> stack) {
+                        if (instruction instanceof MethodInsnNode) {
+                            MethodInsnNode methodInsn = (MethodInsnNode) instruction;
+                            if (methodInsn.name.equals("add")) {
+                                ClassWrapper methodOwner = wrapperPool.get(methodInsn.owner);
+                                if (methodOwner.getAllImplementatingInterfaces().contains("java/util/Collection")) {
+                                    StackElement collection = stack.getDelegateList().get(1);
+                                    StackElement insertedElement = stack.getHead();
+                                    ClassWrapper oldSignature = stackSignatureTypes.get(collection);
+                                    // TODO this does not treat arrays well
+                                    ClassWrapper insertedElementWrapper = wrapperPool.get(insertedElement.type.substring(1, insertedElement.type.length() - 1));
+                                    ClassWrapper wrapper;
+                                    if (oldSignature != null) {
+                                        wrapper = wrapperPool.getCommonSuperClass(insertedElementWrapper, oldSignature);
+                                    } else {
+                                        wrapper = insertedElementWrapper;
+                                    }
+                                    stackSignatureTypes.put(collection, wrapper);
+                                }
+                            }
+                        } else if (instruction.getOpcode() == Opcodes.ARETURN) {
+                            // TODO if possible, calculate the LVT for the collections
+                            ClassWrapper mergeSignature = stackSignatureTypes.get(stack.getHead());
+                            if (mergeSignature != null) {
+                                ClassWrapper oldSignature = signatures.get(methodRef);
+                                if (oldSignature == null) {
+                                    signatures.put(methodRef, mergeSignature);
+                                } else {
+                                    signatures.put(methodRef, wrapperPool.getCommonSuperClass(oldSignature, mergeSignature));
+                                }
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void postCalculation(AbstractInsnNode instruction, LIFOQueue<StackElement> stack) {
+                        // Not needed
+                    }
+                });
+            }
+        }
+
+        
+        return signatures;
     }
 
     /**
