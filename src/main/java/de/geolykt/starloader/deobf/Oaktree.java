@@ -370,7 +370,8 @@ public class Oaktree {
                     }
                     String generics = invokevirtual.desc.substring(1, invokevirtual.desc.indexOf(';'));
                     node.signature = "Ljava/lang/Object;Ljava/util/Comparator<" + generics + ";>;";
-                    method.access |= Opcodes.ACC_BRIDGE;
+                    // Remove this method entirely so that fernflower/quiltflower doesn't fail with -rbr=0
+                    node.methods.remove(method);
                     break;
                 }
             }
