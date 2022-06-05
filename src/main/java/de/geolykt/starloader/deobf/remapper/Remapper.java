@@ -156,6 +156,79 @@ public final class Remapper {
     }
 
     /**
+     * Fixes remapped {@link InnerClassNode} by remapping any child classes alongside their parent class,
+     * even if only the parent class was remapped. Due to the potentially destructive properties of this action,
+     * this method must be explicitly invoked for it to do anything.
+     *
+     * <p>More specifically if the class "OuterClass" is remapped to "RootClass", but "OuterClass$Inner" is not remapped,
+     * then after {@link #process()} the classes "RootClass" and "OuterClass$Inner" will exist. As the names contradict
+     * the relation given by their {@link InnerClassNode}, most decompilers will discard the {@link InnerClassNode}.
+     *
+     * <p>To fix this issue, this method will look for such changes and renames the inner classes accordingly.
+     *
+     * <p>This method will only do anything if it is called before {@link #process()} and will modify the internal
+     * collection of remapped classes.
+     *
+     * <p>The more {@link ClassNode ClassNodes} there are, the more efficient this method is at doing what it should do.
+     *
+     * <p>This method can be destructive as it will not check for collisions.
+     *
+     * @param sharedBuilder A shared {@link StringBuilder} to reduce memory consumption created by string operations
+     * @return A map that contains ALL additional mappings where as the key is the old name and the value the new name.
+     * @author Geolykt
+     */
+    public Map<String, String> fixICNNames(StringBuilder sharedBuilder) {
+        Map<String, List<String>> outerToInner = new HashMap<>();
+        for (ClassNode node : targets) {
+            int lastIndexOfDollar = node.name.lastIndexOf('$');
+            if (lastIndexOfDollar != -1) {
+                String outerName = node.name.substring(0, lastIndexOfDollar);
+                outerToInner.compute(outerName, (key, oldVal) -> {
+                    if (oldVal == null) {
+                        oldVal = new ArrayList<>();
+                    }
+                    oldVal.add(node.name);
+                    return oldVal;
+                });
+            }
+        }
+
+        // To prevent ConcurrentModificationException
+        Map<String, String> additions = new HashMap<>();
+        Map<String, String> allAdditions = new HashMap<>();
+
+        while (!outerToInner.isEmpty()) {
+
+            oldToNewClassName.forEach((oldName, newName) -> {
+                List<String> innerClasses = outerToInner.remove(oldName);
+                if (innerClasses != null) {
+                    for (String inner : innerClasses) {
+                        if (oldToNewClassName.containsKey(inner)) {
+                            continue;
+                        }
+                        int seperatorPos = inner.lastIndexOf('$');
+                        sharedBuilder.setLength(0);
+                        sharedBuilder.append(newName);
+                        sharedBuilder.append(inner, seperatorPos, inner.length());
+                        String newInnerName = sharedBuilder.toString();
+                        additions.put(inner, newInnerName);
+                    }
+                }
+            });
+
+            if (additions.isEmpty()) {
+                // We are done here
+                break;
+            }
+            oldToNewClassName.putAll(additions);
+            allAdditions.putAll(additions);
+            additions.clear();
+        }
+
+        return allAdditions;
+    }
+
+    /**
      * Note: due to the circumstances of how the remapper works, this method call may be not required as the remapper
      * remaps the input ClassNodes without cloning them in any capacity.
      *

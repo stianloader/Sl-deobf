@@ -33,6 +33,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.FrameNode;
+import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -64,6 +65,7 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
     private boolean alternateClassNaming;
     private final File map;
     private final List<ClassNode> nodes = new ArrayList<>();
+    private final Map<String, ClassNode> nameToNode = new HashMap<>();
 
     private final File output;
     private final Remapper remapper = new Remapper();
@@ -74,6 +76,7 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
         this.output = output;
         if (nodes != null) {
             this.nodes.addAll(nodes);
+            this.nodes.forEach(node -> nameToNode.put(node.name, node));
             this.remapper.addTargets(nodes);
         }
     }
@@ -384,7 +387,11 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
     }
 
     public void remapClassesV2() {
-        BufferedWriter bw = null;
+        remapClassesV2(false);
+    }
+
+    public void remapClassesV2(boolean findLocalClasses) {
+        BufferedWriter bw;
         if (map != null) {
             try {
                 @SuppressWarnings("resource")
@@ -392,8 +399,19 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
                 bw = dontcomplain;
                 bw.write("v1\tofficial\tintermediary\n");
             } catch (IOException e) {
-                e.printStackTrace();
+                throw new IllegalStateException(e);
             }
+        } else {
+            bw = null;
+        }
+
+        Map<String, String> localClasses;
+        if (findLocalClasses) {
+            Oaktree oaktree = new Oaktree();
+            oaktree.getClassNodesDirectly().addAll(nodes);
+            localClasses = oaktree.guessLocalClasses();
+        } else {
+            localClasses = Collections.emptyMap();
         }
 
         Map<String, TreeSet<ClassNode>> remappedEnums = new HashMap<>();
@@ -403,7 +421,11 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
         Map<String, TreeSet<ClassNode>> remappedPrivateClasses = new HashMap<>();
         Map<String, TreeSet<ClassNode>> remappedProtectedClasses = new HashMap<>();
         Map<String, TreeSet<ClassNode>> remappedPublicClasses = new HashMap<>();
+
         for (ClassNode node : nodes) {
+            if (localClasses.containsKey(node.name)) {
+                continue; // No need to rename it
+            }
             int lastSlash = node.name.lastIndexOf('/');
             String className = node.name.substring(lastSlash + 1);
             String packageName = node.name.substring(0, lastSlash);
@@ -467,13 +489,57 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
             }
         }
 
-        remapSet(remappedEnums, bw, "enum_");
-        remapSet(remappedInterfaces, bw, "interface_");
-        remapSet(remappedInners, bw, "innerclass_");
-        remapSet(remappedLocals, bw, "localclass_");
-        remapSet(remappedPublicClasses, bw, "class_");
-        remapSet(remappedProtectedClasses, bw, "pclass_"); // protected class
-        remapSet(remappedPrivateClasses, bw, "ppclass_"); // package-private class
+        Map<String, String> remapMap = new HashMap<>();
+        remapSet(remappedEnums, bw, "enum_", remapMap);
+        remapSet(remappedInterfaces, bw, "interface_", remapMap);
+        remapSet(remappedInners, bw, "innerclass_", remapMap);
+        remapSet(remappedLocals, bw, "localclass_", remapMap);
+        remapSet(remappedPublicClasses, bw, "class_", remapMap);
+        remapSet(remappedProtectedClasses, bw, "pclass_",remapMap); // protected class
+        remapSet(remappedPrivateClasses, bw, "ppclass_", remapMap); // package-private class
+
+        Map<String, List<String>> mappings = new HashMap<>();
+        Set<String> unmappedInnerClasses = new HashSet<>();
+
+        localClasses.forEach((inner, outer) -> {
+            mappings.compute(outer, (key, list) -> {
+                if (list == null) {
+                    list = new ArrayList<>();
+                }
+                list.add(inner);
+                return list;
+            });
+            unmappedInnerClasses.add(inner);
+        });
+
+        while (unmappedInnerClasses.size() != 0) {
+            int oldSize = unmappedInnerClasses.size();
+            mappings.forEach((outer, inners) -> {
+                if (unmappedInnerClasses.contains(outer)) {
+                    return;
+                }
+                inners.sort(String::compareTo);
+                int counter = 0;
+                ClassNode outerNode = nameToNode.get(outer);
+                for (String inner : inners) {
+                    ClassNode innerNode = nameToNode.get(inner);
+                    String innerName = "Local" + counter++;
+                    InnerClassNode icn = new InnerClassNode(inner, outer, innerName, innerNode.access);
+                    outerNode.innerClasses.add(icn);
+                    innerNode.innerClasses.add(icn);
+                    String newName = remapMap.getOrDefault(outer, outer) + '$' + innerName;
+                    remapMap.put(inner, newName);
+                    remapClass(inner, newName, bw);
+                    unmappedInnerClasses.remove(inner);
+                }
+            });
+            if (unmappedInnerClasses.size() == oldSize) {
+                for (String s : unmappedInnerClasses) {
+                    System.out.println("IntermediaryGenerator: " + s + " is part of a nested pair. Discarded from intermediary");
+                }
+                break; // Only nested pairs remaining - Discard all
+            }
+        }
 
         if (bw != null) {
             try {
@@ -909,13 +975,15 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
         }
     }
 
-    private void remapSet(Map<String, TreeSet<ClassNode>> set, BufferedWriter writer, String prefix) {
+    private void remapSet(Map<String, TreeSet<ClassNode>> set, BufferedWriter writer, String prefix, Map<String, String> mappingsOut) {
         prefix = '/' + prefix;
         for (Map.Entry<String, TreeSet<ClassNode>> packageNode : set.entrySet()) {
             String packageName = packageNode.getKey();
             int counter = 0;
             for (ClassNode node : packageNode.getValue()) {
-                remapClass(node.name, packageName + prefix + createString(counter++), writer);
+                String newName = packageName + prefix + createString(counter++);
+                remapClass(node.name, newName, writer);
+                mappingsOut.put(node.name, newName);
             }
         }
     }
