@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
@@ -1054,6 +1055,8 @@ public class Oaktree {
     /**
      * Guesses the should-be inner classes of classes based on the usages of the class.
      * This only guesses anonymous classes based on the code, but not based on the name.
+     * It also does not require the synthetic fields for the anonymous classes, so it may
+     * do mismatches from time to time.
      *
      * <p>It will not overwrite already existing relations and will not perform any changes
      * to the class nodes.
@@ -1068,6 +1071,7 @@ public class Oaktree {
         Map<String, MethodReference> anonymousClasses = new HashMap<>();
 
         Set<String> potentialAnonymousClasses = new HashSet<>();
+        Set<FieldReference> syntheticFields = new HashSet<>();
 
         nodeLoop:
         for (ClassNode node : nodes) {
@@ -1082,8 +1086,12 @@ public class Oaktree {
                 }
             }
             potentialAnonymousClasses.add(node.name);
+            for (FieldNode field : node.fields) {
+                if ((field.access & Opcodes.ACC_SYNTHETIC) != 0) {
+                    syntheticFields.add(new FieldReference(node.name, field));
+                }
+            }
         }
-
 
         for (ClassNode node : nodes) {
             for (FieldNode field : node.fields) {
@@ -1112,15 +1120,18 @@ public class Oaktree {
                     AbstractInsnNode insn = method.instructions.getFirst();
                     while (insn != null) {
                         if (insn instanceof FieldInsnNode) {
-                            String className = getClassName(((FieldInsnNode) insn).desc);
-                            if (className != null && !className.equals(node.name)) {
-                                potentialAnonymousClasses.remove(className);
-                                anonymousClasses.remove(className);
-                            }
-                            className = ((FieldInsnNode) insn).owner;
-                            if (className != null && !className.equals(node.name)) {
-                                potentialAnonymousClasses.remove(className);
-                                anonymousClasses.remove(className);
+                            FieldInsnNode fieldInsn = (FieldInsnNode) insn;
+                            if (!syntheticFields.contains(new FieldReference(fieldInsn))) {
+                                String className = getClassName(fieldInsn.desc);
+                                if (className != null && !className.equals(node.name)) {
+                                    potentialAnonymousClasses.remove(className);
+                                    anonymousClasses.remove(className);
+                                }
+                                className = fieldInsn.owner;
+                                if (className != null && !className.equals(node.name)) {
+                                    potentialAnonymousClasses.remove(className);
+                                    anonymousClasses.remove(className);
+                                }
                             }
                         } else if (insn instanceof MethodInsnNode) {
                             MethodInsnNode methodInsn = (MethodInsnNode) insn;
@@ -1129,7 +1140,12 @@ public class Oaktree {
                                     potentialAnonymousClasses.remove(methodInsn.owner);
                                     anonymousClasses.remove(methodInsn.owner);
                                 } else if (potentialAnonymousClasses.contains(methodInsn.owner)) {
-                                    anonymousClasses.put(methodInsn.owner, new MethodReference(node.name, method));
+                                    if (methodInsn.desc.startsWith(node.name, 2)) {
+                                        anonymousClasses.put(methodInsn.owner, new MethodReference(node.name, method));
+                                    } else {
+                                        anonymousClasses.remove(methodInsn.owner);
+                                        potentialAnonymousClasses.remove(methodInsn.owner);
+                                    }
                                 }
                             } else {
                                 String returnClass = getReturnedClass(methodInsn.desc);
@@ -1150,18 +1166,86 @@ public class Oaktree {
     }
 
     /**
+     * Guesses which classes are a local class within a certain class.
+     * Other than anonymous classes, local classes can be references within the entire block.
+     * This method only supports guessing local classes within classes (may they be nested or not),
+     * however can also lead to it marking anonymous classes as local classes.
+     *
+     * <p>The names of the local classes are inferred from outer class, the given prefix and their name compared
+     * to other local classes.
+     *
+     * <p>This method does not check for collision
+     *
+     * <p>This method will internally allow for large amounts of nesting - at performance cost,
+     * however should a recursive nest be assumed, the nest (and all nests depending on the nest) will be
+     * <b>silently discarded</b>.
+     *
+     * @param localClassNamePrefix The prefix to use for naming local classes
+     * @param condition            A predicate that is called for each proposed mapping.
+     *                             First argument is the outer class, second argument the inner class.
+     *                             Should the predicate yield false, the relation is discarded.
+     * @param applyInnerClassNodes Whether to apply {@link InnerClassNode} to the inner AND outer class nodes.
+     *                             Making it false may require {@link #fixInnerClasses()} to be applied.
+     * @return A map storing proposed renames of the inner classes.
+     * @author Geolykt
+     */
+    public Map<String, String> getProposedLocalClassNames(final String localClassNamePrefix, BiPredicate<String, String> condition, boolean applyInnerClassNodes) {
+        Map<String, List<String>> mappings = new HashMap<>();
+        Set<String> unmappedInnerClasses = new HashSet<>();
+        guessLocalClasses().forEach((inner, outer) -> {
+            if (!condition.test(outer, inner)) {
+                return;
+            }
+            mappings.compute(outer, (key, list) -> {
+                if (list == null) {
+                    list = new ArrayList<>();
+                }
+                list.add(inner);
+                return list;
+            });
+            unmappedInnerClasses.add(inner);
+        });
+        Map<String, String> mappedNames = new HashMap<>();
+        while (unmappedInnerClasses.size() != 0) {
+            int oldSize = unmappedInnerClasses.size();
+            mappings.forEach((outer, inners) -> {
+                if (unmappedInnerClasses.contains(outer)) {
+                    return;
+                }
+                inners.sort(String::compareTo);
+                int counter = 0;
+                ClassNode outerNode = nameToNode.get(outer);
+                for (String inner : inners) {
+                    ClassNode innerNode = nameToNode.get(inner);
+                    String innerName = localClassNamePrefix + counter++;
+                    if (applyInnerClassNodes) {
+                        InnerClassNode icn = new InnerClassNode(inner, outer, innerName, innerNode.access);
+                        outerNode.innerClasses.add(icn);
+                        innerNode.innerClasses.add(icn);
+                    }
+                    mappedNames.put(inner, mappedNames.getOrDefault(outer, outer) + '$' + innerName);
+                    unmappedInnerClasses.remove(inner);
+                }
+            });
+            if (unmappedInnerClasses.size() == oldSize) {
+                break; // Only nested pairs remaining - silently discard all
+            }
+        }
+        return mappedNames;
+    }
+
+    /**
      * Guesses anonymous inner classes by checking whether they have a synthetic field and if they
      * do whether they are referenced only by a single "parent" class.
      * Note: this method is VERY aggressive when it comes to adding inner classes, sometimes it adds
-     * inner classes on stuff where it wouldn't belong. This  means that usage of this method should
+     * inner classes on stuff where it wouldn't belong. This means that usage of this method should
      * be done wisely. This method will do some damage even if it does no good.
      *
      * @return The amount of guessed anonymous inner classes
-     * @deprecated The result created by this method is of questionable quality. Use {@link #guessAnonymousClasses()}
-     * instead, which has better proven reliability.
      */
-    @Deprecated(forRemoval = true, since = "0.0.2")
     public int guessAnonymousInnerClasses() {
+        // FIXME while this code does an excellent job at what it should do, it does a terrible job
+        // at what it should not do (removing the classes as root classes)
 
         // Class name -> referenced class, method
         // I am well aware that we are using method node, but given that there can be multiple methods with the same
@@ -1175,8 +1259,7 @@ public class Oaktree {
             boolean skipClass = false;
             FieldNode outerClassReference = null;
             for (FieldNode field : node.fields) {
-                final int requiredFlags = Opcodes.ACC_SYNTHETIC | Opcodes.ACC_FINAL;
-                if ((field.access & requiredFlags) == requiredFlags
+                if ((field.access & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_FINAL)) == (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_FINAL)
                         && (field.access & VISIBILITY_MODIFIERS) == 0) {
                     if (outerClassReference != null) {
                         skipClass = true;
@@ -1318,7 +1401,13 @@ public class Oaktree {
             if (hasInnerClassInfoInner && hasInnerClassInfoOuter) {
                 continue;
             }
-            InnerClassNode newInnerClassNode = new InnerClassNode(inner, null, null, 16400);
+            if (hasInnerClassInfoInner || hasInnerClassInfoOuter) {
+                throw new IllegalStateException("Partially applied inner classes found");
+            }
+            // Used to be (16400 = ACC_FINAL | ACC_ENUM), but we ended up going with
+            // just ACC_SUPER (0x20) instead as only that one really makes sense and is the only access
+            // used for anonymous class (see https://gist.github.com/Geolykt/52a7917c279f90695f5afbe10105399a)
+            InnerClassNode newInnerClassNode = new InnerClassNode(inner, outernode.name, null, Opcodes.ACC_SUPER);
             if (!hasInnerClassInfoInner) {
                 innerNode.outerMethod = outerMethod.name;
                 innerNode.outerMethodDesc = outerMethod.desc;
@@ -1628,6 +1717,100 @@ public class Oaktree {
         }
 
         return addedFieldSignatures;
+    }
+
+    /**
+     * Guesses which classes are local classes within another class.
+     * Local classes are non-static classes that are nested within another class
+     * or method.
+     *
+     * <p>This method is rather aggressive and may recommend pairing that do not make
+     * sense. It is up to the API consumer to sort out nonsensical pairings from
+     * the ones that make sense.
+     *
+     * <p>Invoking this method does not have any effect in itself.
+     * The returned map should be used to create pairings.
+     *
+     * @return A map that has the inner classes as the key and their outer class as it's value.
+     */
+    public Map<String, String> guessLocalClasses() {
+        Map<String, String> localClasses = new HashMap<>();
+        classLoop:
+        for (ClassNode node : nodes) {
+            for (InnerClassNode icn : node.innerClasses) {
+                if (icn.name.equals(node.name)) {
+                    continue classLoop;
+                }
+            }
+
+            String this0FieldDesc = null;
+            String this0FieldName = null;
+            for (MethodNode method : node.methods) {
+                if (method.name.equals("<init>")) {
+                    if (method.desc.codePointAt(1) != 'L') {
+                        continue classLoop;
+                    }
+                    String outerClassDesc = method.desc.substring(1, method.desc.indexOf(';', 3) + 1);
+                    if (this0FieldDesc != null && !outerClassDesc.equals(this0FieldDesc)) {
+                        continue classLoop;
+                    }
+                    this0FieldDesc = outerClassDesc;
+                    AbstractInsnNode insn = method.instructions.getFirst();
+                    while (insn.getOpcode() == -1) {
+                        insn = insn.getNext();
+                    }
+                    if (insn.getOpcode() != Opcodes.ALOAD || ((VarInsnNode)insn).var != 0) {
+                        continue classLoop;
+                    }
+                    insn = insn.getNext();
+                    if (insn.getOpcode() != Opcodes.ALOAD || ((VarInsnNode)insn).var != 1) {
+                        continue classLoop;
+                    }
+                    insn = insn.getNext();
+                    if (insn.getOpcode() != Opcodes.PUTFIELD) {
+                        continue classLoop;
+                    }
+                    FieldInsnNode putFieldInsn = (FieldInsnNode) insn;
+                    if (!this0FieldDesc.equals(putFieldInsn.desc)) {
+                        continue classLoop;
+                    }
+                    if (this0FieldName != null && !this0FieldName.equals(putFieldInsn.name)) {
+                        continue classLoop;
+                    }
+                    this0FieldName = putFieldInsn.name;
+                }
+            }
+
+            if (this0FieldDesc == null || this0FieldName == null) {
+                continue;
+            }
+
+            boolean resolvedField = false;
+            for (FieldNode field : node.fields) {
+                if ((field.access & Opcodes.ACC_SYNTHETIC) == 0) {
+                    continue;
+                }
+                if (field.name.equals(this0FieldName) && field.desc.equals(this0FieldDesc)) {
+                    resolvedField = true;
+                    break;
+                }
+            }
+            if (!resolvedField) {
+                continue;
+            }
+
+            // Ensure that the two classes are in the same package
+            int lastIndexOfSlash = node.name.lastIndexOf('/');
+            if (this0FieldDesc.length() <= (lastIndexOfSlash + 1) || this0FieldDesc.codePointAt(lastIndexOfSlash + 1) != '/') {
+                continue;
+            }
+            if (!this0FieldDesc.startsWith(node.name.substring(0, lastIndexOfSlash), 1)) {
+                continue;
+            }
+            localClasses.put(node.name, this0FieldDesc.substring(1, this0FieldDesc.length() - 1));
+        }
+
+        return localClasses;
     }
 
     /**
@@ -2103,6 +2286,19 @@ public class Oaktree {
         }
 
         return addedMethodSignatures;
+    }
+
+    /**
+     * Invalidate internal {@link ClassNode} {@link ClassNode#name name} caches.
+     * Should be invoked when for example class nodes are remapped, at which point
+     * internal caches are no longer valid.
+     */
+    public void invalidateNameCaches() {
+        nameToNode.clear();
+        for (ClassNode node : nodes) {
+            nameToNode.put(node.name, node);
+        }
+        wrapperPool.invalidateNameCaches();
     }
 
     public void write(OutputStream out) throws IOException {

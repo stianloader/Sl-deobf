@@ -1,6 +1,8 @@
 package de.geolykt.starloader.deobf;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.objectweb.asm.Opcodes;
@@ -101,6 +103,20 @@ public class ClassWrapperPool {
             return get("java/lang/Object");
         }
         return getCommonSuperClass(class1, get(class2.getSuper()));
+    }
+
+    /**
+     * Invalidate internal {@link ClassNode} {@link ClassNode#name name} caches.
+     * Should be invoked when for example class nodes are remapped, at which point
+     * internal caches are no longer valid.
+     */
+    public void invalidateNameCaches() {
+        List<ClassNode> nodes = new ArrayList<>(this.nodes.values());
+        this.nodes.clear();
+        this.wrappers.clear();
+        for (ClassNode node : nodes) {
+            addClassnode(node);
+        }
     }
 
     public boolean isImplementingInterface(ClassWrapper clazz, String interfaceName) {
