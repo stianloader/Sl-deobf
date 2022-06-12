@@ -42,7 +42,7 @@ public class ClassWrapperPool {
         return false;
     }
 
-
+    // Remember to also edit .optGet alongside .get
     public ClassWrapper get(String className) {
         ClassWrapper wrapper = wrappers.get(className);
         if (wrapper != null) {
@@ -137,4 +137,48 @@ public class ClassWrapperPool {
         }
         return isImplementingInterface(clazz.getSuperWrapper(), interfaceName);
     }
+
+    // Remember to also edit .get alongside .optGet
+    public ClassWrapper optGet(String className) {
+        ClassWrapper wrapper = wrappers.get(className);
+        if (wrapper != null) {
+            return wrapper;
+        }
+        if (className.equals("java/lang/Object")) {
+            wrapper = new ClassWrapper("java/lang/Object", null, new String[0], false, this);
+            wrappers.put("java/lang/Object", wrapper);
+            return wrapper;
+        }
+        ClassNode asmNode = nodes.get(className);
+        if (asmNode == null) {
+            Class<?> clazz;
+            try {
+                clazz = Class.forName(className.replace('/', '.'), false, loader);
+            } catch (ClassNotFoundException e) {
+                return null;
+            }
+            boolean itf = clazz.isInterface();
+            String superName;
+            if (itf) {
+                superName = "java/lang/Object";
+            } else {
+                superName = clazz.getSuperclass().getName().replace('.', '/');
+            }
+            Class<?>[] interfaces = clazz.getInterfaces();
+            String[] superInterfaces = new String[interfaces.length];
+            for (int i = 0; i < interfaces.length; i++) {
+                superInterfaces[i] = interfaces[i].getName().replace('.', '/');
+            }
+            wrapper = new ClassWrapper(className, superName, superInterfaces, itf, this);
+            wrappers.put(className, wrapper);
+            return wrapper;
+        } else {
+            String[] superInterfaces = asmNode.interfaces.toArray(new String[0]);
+            boolean itf = (asmNode.access & Opcodes.ACC_INTERFACE) != 0;
+            wrapper = new ClassWrapper(className, asmNode.superName, superInterfaces, itf, this);
+            wrappers.put(className, wrapper);
+            return wrapper;
+        }
+    }
+
 }

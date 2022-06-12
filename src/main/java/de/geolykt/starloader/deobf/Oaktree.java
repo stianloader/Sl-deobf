@@ -61,7 +61,8 @@ import de.geolykt.starloader.deobf.StackWalker.StackWalkerConsumer;
  * @author Geolykt
  */
 public class Oaktree {
-    // TODO: lambda handle name recovery
+    // TODO: lambda handle name recovery (Does this fall under Oaktree? I would assume that that is for SlIntermediary)
+    // TODO: lambda-stream based generic signature guessing - if applicable
 
     /**
      * A hardcoded set of implementations of the {@link Collection} interface that apply for
@@ -158,7 +159,7 @@ public class Oaktree {
         }
         int indexOfL = methodDesc.indexOf('L', closingBracket);
         if (indexOfL != -1) {
-            return methodDesc.substring(indexOfL, methodDesc.length() - 1);
+            return methodDesc.substring(indexOfL + 1, methodDesc.length() - 1);
         }
         return null;
     }
@@ -1192,11 +1193,15 @@ public class Oaktree {
 
         for (ClassNode node : nodes) {
             for (MethodNode method : node.methods) {
-                if ((method.access & Opcodes.ACC_STATIC) == 0 || method.signature != null || !method.desc.startsWith("()L") ) {
+                if ((method.access & Opcodes.ACC_STATIC) == 0 || method.signature != null) {
                     continue;
                 }
-                ClassWrapper returnType = wrapperPool.get(method.desc.substring(3, method.desc.length() - 1));
-                if (!returnType.getAllImplementatingInterfaces().contains("java/util/Collection")) {
+                String returnedClass = getReturnedClass(method.desc);
+                if (returnedClass == null) {
+                    continue;
+                }
+                ClassWrapper returnType = wrapperPool.optGet(returnedClass);
+                if (returnType == null || !returnType.getAllImplementatingInterfaces().contains("java/util/Collection")) {
                     continue;
                 }
 
@@ -1247,7 +1252,7 @@ public class Oaktree {
             }
         }
 
-        
+        signatures.values().removeIf(wrapper -> wrapper.getSuper() == null);
         return signatures;
     }
 
