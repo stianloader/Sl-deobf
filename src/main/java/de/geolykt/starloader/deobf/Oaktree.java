@@ -39,6 +39,7 @@ import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LineNumberNode;
@@ -60,7 +61,6 @@ import de.geolykt.starloader.deobf.StackWalker.StackWalkerConsumer;
  */
 public class Oaktree {
     // TODO: lambda handle name recovery (Does this fall under Oaktree? I would assume that that is for SlIntermediary)
-    // TODO: lambda-stream based generic signature guessing - Greenlit - Increased priority
 
     /**
      * A hardcoded set of implementations of the {@link Collection} interface that apply for
@@ -2288,6 +2288,80 @@ public class Oaktree {
             nameToNode.put(node.name, node);
         }
         wrapperPool.invalidateNameCaches();
+    }
+
+    public void lambdaStreamGenericSignatureGuessing(final Map<FieldReference, ClassWrapper> fields, final Map<MethodReference, ClassWrapper> methods) {
+        for (ClassNode node : nodes) {
+            for (MethodNode method : node.methods) {
+                if (method.instructions == null) {
+                    continue;
+                }
+                AbstractInsnNode insn = method.instructions.getFirst();
+                while (insn != null) {
+                    if (!((insn instanceof FieldInsnNode && fields != null) || (insn instanceof MethodInsnNode && methods != null))) {
+                        insn = insn.getNext();
+                        continue;
+                    }
+                    AbstractInsnNode source = insn;
+                    insn = source.getNext();
+                    while (insn.getOpcode() == -1) {
+                        insn = insn.getNext();
+                    }
+                    if (insn.getOpcode() != Opcodes.INVOKEINTERFACE && insn.getOpcode() != Opcodes.INVOKEVIRTUAL) {
+                        continue;
+                    }
+                    MethodInsnNode streamInsn = (MethodInsnNode) insn;
+                    if (!streamInsn.name.equals("stream") || !streamInsn.desc.equals("()Ljava/util/stream/Stream;")) {
+                        continue;
+                    }
+                    ClassWrapper streamInsnOwner = wrapperPool.optGet(streamInsn.owner);
+                    if (streamInsnOwner == null || !streamInsnOwner.getAllImplementatingInterfaces().contains("java/util/Collection")) {
+                        continue;
+                    }
+                    insn = streamInsn.getNext();
+                    while (insn.getOpcode() == -1) {
+                        insn = insn.getNext();
+                    }
+                    if (!(insn instanceof InvokeDynamicInsnNode)) {
+                        continue;
+                    }
+                    InvokeDynamicInsnNode streamOp = (InvokeDynamicInsnNode) insn;
+
+                    Type desc = (Type) streamOp.bsmArgs[streamOp.bsmArgs.length - 1];
+                    DescString descString2 = new DescString(desc.getDescriptor());
+                    if (!descString2.hasNext()) {
+                        continue;
+                    }
+                    String arg = descString2.nextType();
+                    if (descString2.hasNext()) {
+                        continue;
+                    }
+
+                    ClassWrapper cw = wrapperPool.optGet(arg.substring(1, arg.length() - 1));
+                    if (cw == null) {
+                        continue;
+                    }
+
+                    if (source instanceof FieldInsnNode) {
+                        FieldReference fref = new FieldReference((FieldInsnNode) source);
+                        ClassWrapper old = fields.get(fref);
+                        if (old != null) {
+                            cw = wrapperPool.getCommonSuperClass(cw, old);
+                        }
+                        fields.put(fref, cw);
+                    } else if (source instanceof MethodInsnNode) {
+                        MethodReference mref = new MethodReference((MethodInsnNode) source);
+                        ClassWrapper old = methods.get(mref);
+                        if (old != null) {
+                            cw = wrapperPool.getCommonSuperClass(cw, old);
+                        }
+                        methods.put(mref, cw);
+                    }
+
+                    insn = insn.getNext();
+                }
+            }
+        }
     }
 
     public void write(OutputStream out) throws IOException {
