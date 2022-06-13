@@ -28,7 +28,17 @@ import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
-import de.geolykt.starloader.deobf.StackElement.ElementSource;
+import de.geolykt.starloader.deobf.stack.source.ArrayLoadSource;
+import de.geolykt.starloader.deobf.stack.source.CastSource;
+import de.geolykt.starloader.deobf.stack.source.FieldSource;
+import de.geolykt.starloader.deobf.stack.source.FrameSource;
+import de.geolykt.starloader.deobf.stack.source.GenericInsnSource;
+import de.geolykt.starloader.deobf.stack.source.IndyReturnSource;
+import de.geolykt.starloader.deobf.stack.source.MethodReturnSource;
+import de.geolykt.starloader.deobf.stack.source.NewArraySource;
+import de.geolykt.starloader.deobf.stack.source.ParameterSource;
+import de.geolykt.starloader.deobf.stack.source.ThisSource;
+import de.geolykt.starloader.deobf.stack.source.UndefinedSource;
 
 public class StackWalker {
 
@@ -80,13 +90,13 @@ public class StackWalker {
         int asmLocalsFrameSize;
 
         if ((method.access & Opcodes.ACC_STATIC) == 0) {
-            locals.add(new StackElement(ElementSource.thisRef(), 'L' + owner.name + ';'));
+            locals.add(new StackElement(ThisSource.GENERIC_INSTANCE, 'L' + owner.name + ';'));
         }
 
         DescString desc = new DescString(method.desc);
         while (desc.hasNext()) {
             String type = desc.nextType();
-            locals.add(new StackElement(ElementSource.ofParameter(locals.size()), type));
+            locals.add(new StackElement(new ParameterSource(locals.size()), type));
             if (type.equals("J") || type.equals("D")) {
                 // Doubles and Longs occupy 2 stack entries
                 locals.add(StackElement.INVALID);
@@ -104,7 +114,7 @@ public class StackWalker {
         if ((owner.version & 0x00FF) <= Opcodes.V1_5) {
             exceptionHandlers = new HashMap<>();
             for (TryCatchBlockNode trycatchBlock : method.tryCatchBlocks) {
-                exceptionHandlers.put(trycatchBlock.handler, new StackElement(ElementSource.undefined(), 'L' + trycatchBlock.type + ';'));
+                exceptionHandlers.put(trycatchBlock.handler, new StackElement(UndefinedSource.INSTANCE, 'L' + trycatchBlock.type + ';'));
             }
         }
 
@@ -125,7 +135,7 @@ public class StackWalker {
                     stack.remove(); // remove `this` reference
                 }
                 if (insn.getOpcode() == Opcodes.GETFIELD || insn.getOpcode() == Opcodes.GETSTATIC) {
-                    stack.add(new StackElement(ElementSource.ofField(field), field.desc));
+                    stack.add(new StackElement(new FieldSource(field), field.desc));
                 } else {
                     stack.remove();
                 }
@@ -135,28 +145,28 @@ public class StackWalker {
                 } else if (insn.getOpcode() == Opcodes.BIPUSH) {
                     stack.add(StackElement.BYTE);
                 }  else if (insn.getOpcode() == Opcodes.NEWARRAY) {
-                    stack.remove();
+                    StackElement arrayLen = stack.remove();
                     IntInsnNode intInsn = (IntInsnNode) insn;
                     if (intInsn.operand == Opcodes.T_DOUBLE) {
-                        stack.add(new StackElement(ElementSource.ofInstruction(insn), "[D"));
+                        stack.add(new StackElement(new NewArraySource(intInsn, arrayLen), "[D"));
                     } else if (intInsn.operand == Opcodes.T_BOOLEAN || intInsn.operand == 0) {
                         // Latter seems to be nonstandard and would need investigation.
                         // The JVMS does not suggest that 0 is a valid value for the operand.
                         // Recaf, CFR and Procyon seem to accept it however, so could it be
                         // something that have been changed with the years?
-                        stack.add(new StackElement(ElementSource.ofInstruction(insn), "[B"));
+                        stack.add(new StackElement(new NewArraySource(intInsn, arrayLen), "[B"));
                     } else if (intInsn.operand == Opcodes.T_BYTE) {
-                        stack.add(new StackElement(ElementSource.ofInstruction(insn), "[B")); // Oracle's JVM stores it as 1 boolean per byte
+                        stack.add(new StackElement(new NewArraySource(intInsn, arrayLen), "[B")); // Oracle's JVM stores it as 1 boolean per byte
                     } else if (intInsn.operand == Opcodes.T_CHAR) {
-                        stack.add(new StackElement(ElementSource.ofInstruction(insn), "[C"));
+                        stack.add(new StackElement(new NewArraySource(intInsn, arrayLen), "[C"));
                     } else if (intInsn.operand == Opcodes.T_FLOAT) {
-                        stack.add(new StackElement(ElementSource.ofInstruction(insn), "[F"));
+                        stack.add(new StackElement(new NewArraySource(intInsn, arrayLen), "[F"));
                     } else if (intInsn.operand == Opcodes.T_INT) {
-                        stack.add(new StackElement(ElementSource.ofInstruction(insn), "[I"));
+                        stack.add(new StackElement(new NewArraySource(intInsn, arrayLen), "[I"));
                     } else if (intInsn.operand == Opcodes.T_LONG) {
-                        stack.add(new StackElement(ElementSource.ofInstruction(insn), "[J"));
+                        stack.add(new StackElement(new NewArraySource(intInsn, arrayLen), "[J"));
                     } else if (intInsn.operand == Opcodes.T_SHORT) {
-                        stack.add(new StackElement(ElementSource.ofInstruction(insn), "[S"));
+                        stack.add(new StackElement(new NewArraySource(intInsn, arrayLen), "[S"));
                     } else {
                         throw new UnsupportedOperationException("Unimplemented operand: " + intInsn.operand);
                     }
@@ -188,7 +198,7 @@ public class StackWalker {
                     throw new UnsupportedOperationException("Unimplemented type: " + ldc.cst.getClass().descriptorString());
                 }
 
-                stack.add(new StackElement(ElementSource.ofLdc(ldc), typeDescriptor));
+                stack.add(new StackElement(new GenericInsnSource(ldc), typeDescriptor));
             } else if (insn instanceof MethodInsnNode) {
                 MethodInsnNode methodInsn = (MethodInsnNode) insn;
 
@@ -204,7 +214,7 @@ public class StackWalker {
 
                 String returnType = methodInsn.desc.substring(methodInsn.desc.indexOf(')') + 1);
                 if (!returnType.equals("V")) {
-                    stack.add(new StackElement(ElementSource.ofMethodReturn(methodInsn), returnType));
+                    stack.add(new StackElement(new MethodReturnSource(methodInsn), returnType));
                 }
             } else if (insn instanceof InsnNode) {
                 switch (insn.getOpcode()) {
@@ -247,14 +257,10 @@ public class StackWalker {
                     stack.add(StackElement.DOUBLE);
                     break;
                 case Opcodes.IALOAD:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.INT);
+                    stack.add(new StackElement(new ArrayLoadSource((InsnNode) insn, stack.remove(), stack.remove()), "I"));
                     break;
                 case Opcodes.LALOAD:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.LONG);
+                    stack.add(new StackElement(new ArrayLoadSource((InsnNode) insn, stack.remove(), stack.remove()), "L"));
                     break;
                 case Opcodes.AALOAD: {
                     // arrayref, index -> value
@@ -263,7 +269,7 @@ public class StackWalker {
                         throw new IllegalStateException("Illegal AALOAD statement, index must be a primitive at the very least.");
                     }
                     StackElement arrayref = stack.remove();
-                    StackElement value = new StackElement(ElementSource.ofInstruction(insn), arrayref.type.substring(1));
+                    StackElement value = new StackElement(new ArrayLoadSource((InsnNode) insn, index, arrayref), arrayref.type.substring(1));
                     if (value.type.isEmpty()) {
                         throw new IllegalStateException("Illegal AALOAD statement, arrayref was a primitive.");
                     }
@@ -584,16 +590,15 @@ public class StackWalker {
             } else if (insn instanceof TypeInsnNode) {
                 TypeInsnNode type = (TypeInsnNode) insn;
                 if (type.getOpcode() == Opcodes.NEW) {
-                    stack.add(new StackElement(ElementSource.ofInstruction(insn), 'L' + type.desc + ';'));
+                    stack.add(new StackElement(new GenericInsnSource(insn), 'L' + type.desc + ';'));
                 } else if (type.getOpcode() == Opcodes.ANEWARRAY) {
-                    stack.remove(); // Count
-                    stack.add(new StackElement(ElementSource.ofInstruction(insn), "[L" + type.desc + ';'));
+                    stack.add(new StackElement(new NewArraySource(insn, stack.remove()), "[L" + type.desc + ';'));
                 } else if (type.getOpcode() == Opcodes.INSTANCEOF) {
                     stack.remove();
                     stack.add(StackElement.BOOLEAN);
                 } else if (type.getOpcode() == Opcodes.CHECKCAST) {
                     StackElement beforeCast = stack.remove();
-                    stack.add(new StackElement(ElementSource.ofCast(insn, beforeCast), 'L' + type.desc + ';'));
+                    stack.add(new StackElement(new CastSource(type, beforeCast), 'L' + type.desc + ';'));
                 } else {
                     throw new IllegalStateException("Opcode " + type.getOpcode() + " not known.");
                 }
@@ -642,7 +647,7 @@ public class StackWalker {
                                 // ignore
                                 asmLocalsFrameSize++;
                             } else {
-                                locals.set(asmLocalsFrameSize++, getStackElement(owner, ElementSource.ofFrame(frame, i), local));
+                                locals.set(asmLocalsFrameSize++, getStackElement(owner, new FrameSource(frame, i), local));
                             }
                             i++;
                         }
@@ -674,11 +679,11 @@ public class StackWalker {
                         stack.clear();
                         int i = 0;
                         for (Object o : frame.stack) {
-                            stack.add(getStackElement(owner, ElementSource.ofFrame(frame, i++), o));
+                            stack.add(getStackElement(owner, new FrameSource(frame, i++), o));
                         }
                     } else if (frame.type == Opcodes.F_SAME1) {
                         stack.clear();
-                        stack.add(getStackElement(owner, ElementSource.ofFrame(frame, 0), frame.stack.get(0)));
+                        stack.add(getStackElement(owner, new FrameSource(frame, 0), frame.stack.get(0)));
                     }
                 }
             } else if (insn instanceof LabelNode) {
@@ -690,7 +695,7 @@ public class StackWalker {
                 }
             } else if (insn instanceof MultiANewArrayInsnNode) {
                 MultiANewArrayInsnNode instruction = (MultiANewArrayInsnNode) insn;
-                stack.add(new StackElement(ElementSource.ofInstruction(insn), instruction.desc));
+                stack.add(new StackElement(new GenericInsnSource(insn), instruction.desc));
             } else if (insn instanceof InvokeDynamicInsnNode) {
                 InvokeDynamicInsnNode indy = (InvokeDynamicInsnNode) insn;
                 DescString descString = new DescString(indy.desc);
@@ -701,7 +706,7 @@ public class StackWalker {
 
                 String returnType = indy.desc.substring(indy.desc.indexOf(')') + 1);
                 if (!returnType.equals("V")) {
-                    stack.add(new StackElement(ElementSource.ofInvokeDynamic(indy), returnType));
+                    stack.add(new StackElement(new IndyReturnSource(indy), returnType));
                 }
             }
             consumer.postCalculation(insn, stack);
@@ -710,7 +715,7 @@ public class StackWalker {
         consumer.endMethod();
     }
 
-    private static StackElement getStackElement(ClassNode ownerClass, ElementSource source, Object frame) {
+    private static StackElement getStackElement(ClassNode ownerClass, FrameSource source, Object frame) {
         if (frame instanceof String) {
            return new StackElement(source, 'L' + frame.toString() + ';');
         } else if (frame instanceof Integer) {

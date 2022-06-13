@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,7 +49,6 @@ import org.objectweb.asm.tree.ParameterNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
-import de.geolykt.starloader.deobf.StackElement.ElementSourceType;
 import de.geolykt.starloader.deobf.StackWalker.StackWalkerConsumer;
 
 /**
@@ -62,7 +60,7 @@ import de.geolykt.starloader.deobf.StackWalker.StackWalkerConsumer;
  */
 public class Oaktree {
     // TODO: lambda handle name recovery (Does this fall under Oaktree? I would assume that that is for SlIntermediary)
-    // TODO: lambda-stream based generic signature guessing - if applicable
+    // TODO: lambda-stream based generic signature guessing - Greenlit - Increased priority
 
     /**
      * A hardcoded set of implementations of the {@link Collection} interface that apply for
@@ -196,7 +194,6 @@ public class Oaktree {
             oakTree.fixInnerClasses();
             oakTree.fixParameterLVT();
             oakTree.guessFieldGenerics();
-            oakTree.guessMethodGenerics();
             oakTree.inferMethodGenerics();
             oakTree.inferConstructorGenerics();
             oakTree.fixSwitchMaps();
@@ -1902,105 +1899,6 @@ public class Oaktree {
         }
 
         return localClasses;
-    }
-
-    /**
-     * Guesses the generic signatures of methods based on several factors, such as loops or {@link Collection#add(Object)}.
-     *
-     * @return The amount of guessed method generics
-     */
-    @SuppressWarnings("unused")
-    public int guessMethodGenerics() {
-        if (true) {
-            return 0;
-        }
-        int guessedMethodGenerics = 0;
-
-        // Guess generic signatures of method parameter based on Collection#add
-        List<Boolean> localsValidity = new ArrayList<>(); // Stores whether a given local is relevant for us
-        List<String> assumedSignatures = new ArrayList<>(); // Stores the current assumed signature of a local
-
-        final Map<MethodReference, String> assumedSignature = new HashMap<>();
-
-        Map<MethodReference, String> methodSignatures = new HashMap<>();
-        Map<FieldReference, String> fieldSignatures = new HashMap<>();
-        Map<MethodReference, List<StackElement>> methodReturnedElements = new HashMap<>();
-
-        for (ClassNode node : nodes) {
-            for (FieldNode field : node.fields) {
-                fieldSignatures.put(new FieldReference(node.name, field), field.signature);
-            }
-            for (MethodNode method : node.methods) {
-                methodSignatures.put(new MethodReference(node.name, method), method.signature);
-                if (method.signature != null) {
-                    continue;
-                }
-                String returnType = method.desc.substring(method.desc.indexOf(')') + 1);
-                if (returnType.codePointAt(0) != 'L') {
-                    continue;
-                }
-                ClassWrapper returnTypeWrapper;
-                try {
-                    returnTypeWrapper = wrapperPool.get(returnType.substring(1, returnType.length() - 1));
-                    if (!wrapperPool.isImplementingInterface(returnTypeWrapper, "java/util/Collection")) {
-                        continue; // Not a collection, assumptions useless
-                    }
-                } catch (Exception e) {
-                    continue; // Discard exception
-                }
-
-                int paramCount = 0;
-                for (DescString desc = new DescString(method.desc); desc.hasNext();) {
-                    String type = desc.nextType();
-                    if (type.equals("J") || type.equals("D")) {
-                        paramCount += 2;
-                    } else {
-                        paramCount++;
-                    }
-                }
-
-                ClassWrapper[] paramSignatures = new ClassWrapper[paramCount];
-
-                StackWalker.walkStack(node, method, new StackWalkerConsumer() {
-
-                    @Override
-                    public void preCalculation(AbstractInsnNode instruction, LIFOQueue<StackElement> stack) {
-                        if (instruction instanceof MethodInsnNode) {
-                            MethodInsnNode minsn = (MethodInsnNode) instruction;
-                            if (minsn.name.equals("<init>")) {
-                                return; // Irrelevant
-                            }
-                            ClassWrapper owner = wrapperPool.get(minsn.owner);
-                            if (wrapperPool.isImplementingInterface(owner, "java/util/Collection")) {
-                                if (minsn.name.equals("add") && minsn.desc.equals("(Ljava/lang/Object;)Z")) {
-                                    Iterator<StackElement> stackIterator = stack.iterator();
-                                    StackElement arg = stackIterator.next();
-                                    StackElement ref = stackIterator.next();
-                                    if (ref.source.type == ElementSourceType.INSTRUCTION) {
-                                        System.out.println(ref.source.getMatchingInstruction().getOpcode());;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void postCalculation(AbstractInsnNode instruction, LIFOQueue<StackElement> stack) {
-                        // Unused
-                    }
-                });
-            }
-        }
-
-        for (ClassNode node : nodes) {
-            for (MethodNode method : node.methods) {
-                
-            }
-        }
-        localsValidity = null;
-        assumedSignatures = null;
-
-        return guessedMethodGenerics;
     }
 
     public void index(JarFile file) {
