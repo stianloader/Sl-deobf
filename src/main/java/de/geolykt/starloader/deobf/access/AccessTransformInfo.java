@@ -23,6 +23,36 @@ public final class AccessTransformInfo {
         return Collections.unmodifiableList(modifiers);
     }
 
+    public boolean apply(ClassNode node, boolean runtime) {
+        boolean modified = false;
+        for (AccessFlagModifier mod : modifiers) {
+            if ((runtime && mod.isCompileOnly) || !mod.clazz.equals(node.name)) {
+                continue;
+            }
+            if (mod.type == Type.CLASS) {
+                node.access = mod.apply(node.access);
+                modified = true;
+            } else if (mod.type == Type.METHOD) {
+                for (MethodNode method : node.methods) {
+                    if (mod.name.get().equals(method.name) && mod.descriptor.get().equals(method.desc)) {
+                        method.access = mod.apply(method.access);
+                        modified = true;
+                        break;
+                    }
+                }
+            } else if (mod.type == Type.FIELD) {
+                for (FieldNode field : node.fields) {
+                    if (mod.name.get().equals(field.name) && mod.descriptor.get().equals(field.desc)) {
+                        field.access = mod.apply(field.access);
+                        modified = true;
+                        break;
+                    }
+                }
+            }
+        }
+        return modified;
+    }
+
     public void apply(Map<String, ClassNode> nodes, Consumer<String> warnLogger) {
         Map<String, List<AccessFlagModifier>> innerClasses = new HashMap<>();
 
