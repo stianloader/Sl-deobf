@@ -131,6 +131,15 @@ public class Oaktree {
         }
     };
 
+    // From https://docs.oracle.com/javase/tutorial/java/nutsandbolts/_keywords.html
+    // While there have been other keywords that have been implemented in later versions of java, most of these later keywords
+    // are only used in very specific conditions and hence are not an issue for our circumstances
+    public static final Set<String> JAVA_KEYWORDS = Set.of("abstract", "continue", "for", "new", "switch", "assert", "default",
+            "goto", "package", "synchronized", "boolean", "do", "if", "private", "this", "break", "double", "implements", "protected",
+            "throw", "byte", "else", "import", "public", "throws", "case", "enum", "instanceof", "return", "transient", "catch",
+            "extends", "int", "short", "try", "char", "final", "interface", "static", "void", "class", "finally", "long",
+            "strictfp", "volatile", "const", "float", "native", "super", "while");
+
     public static final int VISIBILITY_MODIFIERS = Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED | Opcodes.ACC_PUBLIC;
 
     /**
@@ -816,9 +825,8 @@ public class Oaktree {
                     while (description.hasNext()) {
                         types.add(description.nextType());
                     }
-                    Set<String> existingTypes = new HashSet<>();
-                    Set<String> duplicateTypes = new HashSet<>();
-                    duplicateTypes.add("Ljava/lang/Class;"); // class is a keyword
+                    Set<String> existingTypeNames = new HashSet<>();
+                    Set<String> duplicateTypeNames = new HashSet<>();
                     boolean oneArray = false;
                     boolean multipleArrays = false;
                     for (String type : types) {
@@ -828,23 +836,40 @@ public class Oaktree {
                             } else {
                                 oneArray = true;
                             }
+                        } else if (type.charAt(0) == 'L') {
+                            int classNameBegin = type.lastIndexOf('/') + 1;
+                            classNameBegin = Math.max(classNameBegin, type.lastIndexOf('$', classNameBegin) + 1);
+                            String typeName = type.substring(classNameBegin, type.length() - 1);
+                            if (!existingTypeNames.add(typeName)) {
+                                duplicateTypeNames.add(typeName);
+                            }
                         } else {
-                            if (!existingTypes.add(type)) {
-                                duplicateTypes.add(type);
+                            if (!existingTypeNames.add(type)) {
+                                duplicateTypeNames.add(type);
                             }
                         }
                     }
+                    existingTypeNames.clear();
+
                     for (int i = 0; i < types.size(); i++) {
                         String type = types.get(i);
                         String name = null;
                         switch (type.charAt(0)) {
                         case 'L':
-                            int cutOffIndex = Math.max(type.lastIndexOf('/'), type.lastIndexOf('$')) + 1;
-                            name = Character.toString(Character.toLowerCase(type.codePointAt(cutOffIndex))) + type.substring(cutOffIndex + 1, type.length() - 1);
-                            if (name.length() < 3) {
-                                name = "argument"; // This reduces the volatility of obfuscated code
+                            int classNameBegin = type.lastIndexOf('/') + 1;
+                            classNameBegin = Math.max(classNameBegin, type.lastIndexOf('$', classNameBegin) + 1);
+                            String typeName = type.substring(classNameBegin, type.length() - 1);
+                            if (typeName.length() == 1) {
+                                name = Character.toString(Character.toLowerCase(typeName.codePointAt(0)));
+                            } else {
+                                name = Character.toString(Character.toLowerCase(typeName.codePointAt(0))) + typeName.substring(1);
                             }
-                            if (duplicateTypes.contains(type)) {
+
+                            if (name.length() < 3) {
+                                name = "argument"; // This reduces the volatility of strongly obfuscated code
+                            } else if (duplicateTypeNames.contains(type)) {
+                                name += i;
+                            } else  if (JAVA_KEYWORDS.contains(name)) {
                                 name += i;
                             }
                             break;
@@ -868,7 +893,7 @@ public class Oaktree {
                             name = "byte" + i;
                             break;
                         case 'C': // char
-                            if (duplicateTypes.contains(type)) {
+                            if (duplicateTypeNames.contains(type)) {
                                 name = "character" + i;
                             } else {
                                 name = "character";
@@ -878,7 +903,7 @@ public class Oaktree {
                             name = "short" + i;
                             break;
                         case 'I': // integer
-                            if (duplicateTypes.contains(type)) {
+                            if (duplicateTypeNames.contains(type)) {
                                 name = "integer" + i;
                             } else {
                                 name = "integer";
