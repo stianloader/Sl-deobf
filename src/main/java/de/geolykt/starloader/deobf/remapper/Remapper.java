@@ -138,14 +138,29 @@ public final class Remapper {
                     }
                 } else if ((field.access & Opcodes.ACC_PRIVATE) == 0) {
                     // Package-protected
-                    int lastIndexOfSlash = node.name.lastIndexOf('/');
-                    String packageName = node.name.substring(0, node.name.lastIndexOf('/'));
+                    final int lastIndexOfSlash = node.name.lastIndexOf('/');
+                    String packageName;
+                    if (lastIndexOfSlash == -1) {
+                        // Node is in the root/default package
+                        packageName = null;
+                    } else {
+                        packageName = node.name.substring(0, lastIndexOfSlash);
+                    }
                     for (String child : childNodes) {
-                        if (child.length() <= lastIndexOfSlash
-                                || child.codePointAt(lastIndexOfSlash) != '/'
-                                || child.indexOf('/', lastIndexOfSlash + 1) != -1
-                                || !child.startsWith(packageName)) {
+                        if (child.length() <= lastIndexOfSlash) {
                             continue;
+                        }
+                        if (packageName == null) {
+                            // Check if the class is in the root/default package.
+                            if (child.indexOf('/') != -1) {
+                                continue; // And it was not
+                            }
+                        } else {
+                            if (child.codePointAt(lastIndexOfSlash) != '/'
+                                    || child.indexOf('/', lastIndexOfSlash + 1) != -1
+                                    || !child.startsWith(packageName)) {
+                                continue;
+                            }
                         }
                         hierarchisedFieldRenames.put(child, field.desc, field.name, newName);
                     }
