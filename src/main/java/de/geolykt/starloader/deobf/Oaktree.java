@@ -825,31 +825,9 @@ public class Oaktree {
                     while (description.hasNext()) {
                         types.add(description.nextType());
                     }
-                    Set<String> existingTypeNames = new HashSet<>();
-                    Set<String> duplicateTypeNames = new HashSet<>();
-                    boolean oneArray = false;
-                    boolean multipleArrays = false;
-                    for (String type : types) {
-                        if (type.charAt(0) == '[') {
-                            if (oneArray) {
-                                multipleArrays = true;
-                            } else {
-                                oneArray = true;
-                            }
-                        } else if (type.charAt(0) == 'L') {
-                            int classNameBegin = type.lastIndexOf('/') + 1;
-                            classNameBegin = Math.max(classNameBegin, type.lastIndexOf('$', classNameBegin) + 1);
-                            String typeName = type.substring(classNameBegin, type.length() - 1);
-                            if (!existingTypeNames.add(typeName)) {
-                                duplicateTypeNames.add(typeName);
-                            }
-                        } else {
-                            if (!existingTypeNames.add(type)) {
-                                duplicateTypeNames.add(type);
-                            }
-                        }
-                    }
-                    existingTypeNames.clear();
+
+                    Map<String, Integer> nameFrequency = new HashMap<>();
+                    String[] names = new String[types.size()];
 
                     for (int i = 0; i < types.size(); i++) {
                         String type = types.get(i);
@@ -857,7 +835,7 @@ public class Oaktree {
                         switch (type.charAt(0)) {
                         case 'L':
                             int classNameBegin = type.lastIndexOf('/') + 1;
-                            classNameBegin = Math.max(classNameBegin, type.lastIndexOf('$', classNameBegin) + 1);
+                            classNameBegin = Math.max(classNameBegin, type.lastIndexOf('$', classNameBegin) + 1); // FIXME does not appear to work as intended
                             String typeName = type.substring(classNameBegin, type.length() - 1);
                             if (typeName.length() == 1) {
                                 name = Character.toString(Character.toLowerCase(typeName.codePointAt(0)));
@@ -866,19 +844,18 @@ public class Oaktree {
                             }
 
                             if (name.length() < 3) {
-                                name = "argument"; // This reduces the volatility of strongly obfuscated code
-                            } else if (duplicateTypeNames.contains(type)) {
-                                name += i;
+                                // This reduces the volatility of strongly obfuscated code
+                                if (types.size() == 1) {
+                                    name = "argument";
+                                } else {
+                                    name = "argument" + i;
+                                }
                             } else  if (JAVA_KEYWORDS.contains(name)) {
                                 name += i;
                             }
                             break;
                         case '[':
-                            if (multipleArrays) {
-                                name = "arr" + i;
-                            } else {
-                                name = "arr";
-                            }
+                            name = "arr";
                             break;
                         case 'F': // float
                             name = "float" + i;
@@ -893,21 +870,13 @@ public class Oaktree {
                             name = "byte" + i;
                             break;
                         case 'C': // char
-                            if (duplicateTypeNames.contains(type)) {
-                                name = "character" + i;
-                            } else {
-                                name = "character";
-                            }
+                            name = "character";
                             break;
                         case 'S': // short
                             name = "short" + i;
                             break;
                         case 'I': // integer
-                            if (duplicateTypeNames.contains(type)) {
-                                name = "integer" + i;
-                            } else {
-                                name = "integer";
-                            }
+                            name = "integer";
                             break;
                         case 'J': // long
                             name = "long" + i;
@@ -915,7 +884,20 @@ public class Oaktree {
                         default:
                             throw new IllegalStateException("Unknown type: " + type);
                         }
-                        params.add(new ParameterNode(Objects.requireNonNull(name), 0));
+                        names[i] = name;
+                        nameFrequency.compute(name, (key, oldVal) -> (oldVal == null) ? 1 : ++oldVal);
+                    }
+
+                    Map<String, Integer> nameIndex = new HashMap<>();
+
+                    for (int i = 0; i < names.length; i++) {
+                        String name = names[i];
+                        nameIndex.compute(name, (key, oldVal) -> (oldVal == null) ? 0 : ++oldVal);
+                        if (nameFrequency.get(name) == 1) {
+                            params.add(new ParameterNode(name, 0));
+                        } else {
+                            params.add(new ParameterNode(name + nameIndex.get(name) , 0));
+                        }
                     }
                 }
 
