@@ -935,12 +935,19 @@ public class Oaktree {
 
     /**
      * Method that tries to restore the SwitchMaps to how they should be.
-     * This includes marking the switchmap classes as anonymous classes, so they may not be referenceable
+     * This includes marking the SwitchMap classes as anonymous classes, so it is likely that they cannot be referenced
      * afterwards.
+     *
+     * <p>It may prove useful to call methods such as {@link #guessAnonymousInnerClasses()} or {@link #guessLocalClasses()}
+     * BEFORE calling this method, as it needs to find the outermost class of all classes.
+     * However if a class is not marked as an inner class of another class, then conflicts may occur as the SwitchMa
+     * would be an inner class of both classes. This state is nonsensical and hence warnings will be printed if it
+     * is encountered.
      *
      * @return The amount of classes who were identified as switch maps.
      */
     public int fixSwitchMaps() {
+        // Field (with old name) -> new (remapped) name
         Map<FieldReference, String> deobfNames = new HashMap<>(); // The deobf name will be something like $SwitchMap$org$bukkit$Material
 
         // index switch map classes - or at least their candidates
@@ -1006,13 +1013,18 @@ public class Oaktree {
 
         // Rename references to the field
         for (ClassNode node : nodes) {
+            // This variable exists to prevent adding the ICN multiple times for a given class pair
             Set<String> addedInnerClassNodes = new HashSet<>();
+            for (InnerClassNode icn : node.innerClasses) {
+                addedInnerClassNodes.add(icn.name);
+            }
+
             for (MethodNode method : node.methods) {
                 AbstractInsnNode instruction = method.instructions.getFirst();
                 while (instruction != null) {
                     if (instruction instanceof FieldInsnNode && instruction.getOpcode() == Opcodes.GETSTATIC) {
                         FieldInsnNode fieldInstruction = (FieldInsnNode) instruction;
-                        if (fieldInstruction.owner.equals(node.name)) { // I have no real idea what I was doing here
+                        if (fieldInstruction.owner.equals(node.name)) { // Prevent that declaration of SwitchMaps being inner classes of themselves
                             instruction = instruction.getNext();
                             continue;
                         }
@@ -1021,27 +1033,36 @@ public class Oaktree {
                         if (newName != null) {
                             fieldInstruction.name = newName;
                             if (!addedInnerClassNodes.contains(fRef.getOwner())) {
-                                InnerClassNode innerClassNode = new InnerClassNode(fRef.getOwner(), node.name, null, Opcodes.ACC_STATIC ^ Opcodes.ACC_SYNTHETIC ^ Opcodes.ACC_FINAL);
-                                ClassNode outerNode = nameToNode.get(fRef.getOwner());
-                                if (outerNode != null) {
-                                    outerNode.innerClasses.add(innerClassNode);
-                                }
-                                ClassNode outermostClassnode = null;
-                                if (node.outerClass != null) {
-                                    outermostClassnode = nameToNode.get(node.outerClass);
-                                }
-                                if (outermostClassnode == null) {
-                                    for (InnerClassNode inner : node.innerClasses) {
-                                        if (inner.name.equals(node.name) && inner.outerName != null) {
-                                            outermostClassnode = nameToNode.get(inner.outerName);
-                                            break;
+                                ClassNode outermostClassnode = node;
+                                outermostNodeFinderLoop:
+                                while (true) {
+                                    if (outermostClassnode.outerClass != null) {
+                                        outermostClassnode = nameToNode.get(outermostClassnode.outerClass);
+                                        continue;
+                                    }
+                                    for (InnerClassNode icn : outermostClassnode.innerClasses) {
+                                        if (icn.name.equals(outermostClassnode.name) && icn.outerName != null) {
+                                            outermostClassnode = nameToNode.get(icn.outerName);
+                                            continue outermostNodeFinderLoop;
                                         }
                                     }
+                                    break;
                                 }
-                                if (outermostClassnode != null) {
-                                    outermostClassnode.innerClasses.add(innerClassNode);
+                                InnerClassNode innerClassNode = new InnerClassNode(fRef.getOwner(), outermostClassnode.name, null, Opcodes.ACC_STATIC ^ Opcodes.ACC_SYNTHETIC ^ Opcodes.ACC_FINAL);
+                                ClassNode switchmapNode = nameToNode.get(fRef.getOwner());
+                                String currentNestParent = null;
+                                for (InnerClassNode icn : switchmapNode.innerClasses) {
+                                    if (icn.name.equals(switchmapNode.name)) {
+                                        currentNestParent = icn.outerName; // What happens if the parent is null?
+                                    }
                                 }
+                                outermostClassnode.innerClasses.add(innerClassNode);
                                 node.innerClasses.add(innerClassNode);
+                                if (currentNestParent == null) {
+                                    switchmapNode.innerClasses.add(innerClassNode);
+                                } else if (!currentNestParent.equals(outermostClassnode.name)) {
+                                    System.out.println("(WARN) Got a collision for switchmap class " + switchmapNode.name + " (" + newName + "). Currently: " + currentNestParent + ", proposed: " + outermostClassnode.name);
+                                }
                             }
                         }
                     }
