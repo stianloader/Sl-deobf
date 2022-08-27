@@ -205,10 +205,10 @@ public class Oaktree {
             oakTree.guessFieldGenerics();
             oakTree.inferMethodGenerics();
             oakTree.inferConstructorGenerics();
-            oakTree.fixSwitchMaps();
             oakTree.fixForeachOnArray();
             oakTree.fixComparators(true);
             oakTree.guessAnonymousClasses();
+            oakTree.fixSwitchMaps();
             long startStep = System.currentTimeMillis();
             oakTree.applyInnerclasses();
             System.out.println("Applied inner class nodes to referencing classes. (" + (System.currentTimeMillis() - startStep) + " ms)");
@@ -2394,6 +2394,7 @@ public class Oaktree {
 
     public void write(OutputStream out) throws IOException {
         JarOutputStream jarOut = new JarOutputStream(out);
+        // TODO: Write nodes in alphabetic order to preserve consistency
         for (ClassNode node : nodes) {
             ClassWriter writer = new ClassWriter(0);
             node.accept(writer);
@@ -2419,6 +2420,7 @@ public class Oaktree {
             throw new IOException("The path (" + resources.toString() + ") specified by \"resources\" does not exist.");
         }
         JarOutputStream jarOut = new JarOutputStream(out);
+        // TODO: Write nodes in alphabetic order to preserve consistency
         for (ClassNode node : nodes) {
             ClassWriter writer = new ClassWriter(0);
             node.accept(writer);
