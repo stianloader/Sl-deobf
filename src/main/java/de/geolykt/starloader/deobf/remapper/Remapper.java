@@ -1,12 +1,5 @@
 package de.geolykt.starloader.deobf.remapper;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -14,10 +7,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 import org.jetbrains.annotations.NotNull;
@@ -43,8 +34,6 @@ import org.objectweb.asm.tree.RecordComponentNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 
-import de.geolykt.starloader.deobf.access.AccessFlagModifier;
-
 /**
  * Simple in-memory remapping engine. Unlike many other remappers it is able to take in already parsed
  * {@link org.objectweb.asm.tree.ClassNode Objectweb ASM Classnodes} as input and output them without having
@@ -54,16 +43,6 @@ import de.geolykt.starloader.deobf.access.AccessFlagModifier;
  * use {@link de.geolykt.starloader.deobf.Oaktree} after remapping.
  */
 public final class Remapper {
-
-    private static final boolean isBlank(@NotNull String string) {
-        int length = string.length();
-        for (int i = 0; i < length; i++) {
-            if (!Character.isWhitespace(string.codePointAt(i))) {
-                return false;
-            }
-        }
-        return true;
-    }
 
     private final FieldRenameMap fieldRenames = new FieldRenameMap();
     private final FieldRenameMap hierarchisedFieldRenames = new FieldRenameMap();
@@ -433,108 +412,6 @@ public final class Remapper {
             nameToNode.put(node.name, node);
         }
         oldToNewClassName.clear();
-    }
-
-    public void remapAccesswidener(InputStream input, OutputStream output, boolean runtime) throws IOException {
-        BufferedReader br = new BufferedReader(new InputStreamReader(input));
-        BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(output));
-        StringBuilder sb = new StringBuilder();
-        while (true) {
-
-            String ln = br.readLine();
-            if (ln == null) {
-                break;
-            }
-            int indexOfCommentSymbol = ln.indexOf('#');
-            String pureLine = indexOfCommentSymbol == -1 ? ln : ln.substring(0, indexOfCommentSymbol);
-            if (isBlank(pureLine) || pureLine.toLowerCase(Locale.ROOT).startsWith("accesswidener")) {
-                bw.write(ln);
-                bw.newLine();
-                continue;
-            }
-            String[] blocks = pureLine.trim().split("\\s+");
-
-            boolean compileOnly = false;
-            if (blocks.length != 0 && (compileOnly = blocks[0].equalsIgnoreCase("compileOnly"))) {
-                String[] copy = new String[blocks.length - 1];
-                System.arraycopy(blocks, 1, copy, 0, copy.length);
-                blocks = copy;
-            }
-
-            if (blocks.length != 3 && blocks.length != 5) {
-                throw new IOException("Illegal block count. Got " + blocks.length + " expected 3 or 5. Line: " + pureLine);
-            }
-
-            String targetClass = blocks[2].replace('.', '/');
-            String operation = blocks[0];
-            String typeName = blocks[1];
-
-            Optional<String> name;
-            Optional<String> desc;
-            AccessFlagModifier.Type memberType = null;
-            switch (typeName.toLowerCase(Locale.ROOT)) {
-            case "class":
-                if (blocks.length != 3) {
-                    throw new IOException("Illegal block count. Got " + blocks.length
-                            + " but expected 3 due to the CLASS modifier. Line: " + pureLine);
-                }
-                memberType = AccessFlagModifier.Type.CLASS;
-                name = Optional.empty();
-                desc = Optional.empty();
-                break;
-            case "field":
-                memberType = AccessFlagModifier.Type.FIELD;
-                // Fall-through intended
-            case "method":
-                if (memberType == null) {
-                    memberType = AccessFlagModifier.Type.METHOD;
-                }
-                if (blocks.length != 5) {
-                    throw new IOException("Illegal block count. Got " + blocks.length
-                            + " but expected 5 due to the METHOD or FIELD modifier. Line: " + pureLine);
-                }
-                name = Optional.of(methodRenames.optGet(targetClass, blocks[4], blocks[3]));
-                sb.setLength(0);
-                remapSignature(blocks[4], sb);
-                desc = Optional.of(sb.toString());
-                break;
-            default:
-                throw new IOException();
-            }
-            targetClass = oldToNewClassName.getOrDefault(targetClass, targetClass);
-
-            AccessFlagModifier modifier;
-
-            switch (operation.toLowerCase(Locale.ROOT)) {
-            case "accessible":
-                modifier = new AccessFlagModifier.AccessibleModifier(memberType, targetClass, name, desc, compileOnly);
-                break;
-            case "extendable":
-                modifier = new AccessFlagModifier.ExtendableModifier(memberType, targetClass, name, desc, compileOnly);
-                break;
-            case "mutable":
-                modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_FINAL, "mutable", compileOnly);
-                break;
-            case "natural":
-                modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_SYNTHETIC, "natural", compileOnly);
-                break;
-            case "denumerised":
-                modifier = new AccessFlagModifier.RemoveFlagModifier(memberType, targetClass, name, desc, Opcodes.ACC_ENUM, "denumerised", compileOnly);
-                break;
-            default:
-                throw new UnsupportedOperationException("Unknown mode: " + operation);
-            }
-
-            if (!(runtime && compileOnly)) {
-                bw.write(modifier.toAccessWidenerString());
-                bw.newLine();
-            } else {
-                bw.write("#compileOnly " + modifier.toAccessWidenerString());
-                bw.newLine();
-            }
-        }
-        br.close();
-        bw.close();
     }
 
     private void remapAnnotation(AnnotationNode annotation, StringBuilder sharedStringBuilder) {
@@ -928,66 +805,6 @@ public final class Remapper {
                     module.uses.set(i, remapped);
                 }
             }
-        }
-    }
-
-    /**
-     * Remaps a literal reference to a class, field or method.
-     * For classes the class will be remapped. For fields the name, owner and descriptor will be remapped.
-     * For methods name, owner and descriptor will be remapped.
-     *
-     *<p> The format of the value of the string must be:
-     * <br> {@literal "org/example/Example"} for classes
-     * <br> {@literal "org/example/Example.field Lorg/example/Type;"} for fields. The class name must be the old (unmapped) name
-     * <br> {@literal "org/example/Example.method(Lorg/example/Parameter;)Lorg/example/ReturnType;"} for methods. Class and descriptor must be the old (unmapped name).
-     * 
-     * @param string The input string to remap
-     * @param sharedBuilder A string builder to reduce string builder allocations
-     * @return The remapped string
-     */
-    @SuppressWarnings("null")
-    @NotNull
-    public String remapReference(@NotNull String string, @NotNull StringBuilder sharedBuilder) {
-        if (fieldRenameHierarchyOutdated) {
-            createFieldHierarchy();
-            fieldRenameHierarchyOutdated = false;
-        }
-        sharedBuilder.setLength(0);
-        int indexofDot = string.indexOf('.');
-        if (indexofDot == -1) {
-            return remapInternalName(string, sharedBuilder);
-        } else {
-            StringBuilder builder = new StringBuilder();
-            String methodOrField = string.substring(indexofDot + 1);
-            String ownerName = string.substring(0, indexofDot);
-            builder.append(remapInternalName(ownerName, sharedBuilder));
-            builder.append('.');
-            int indexofSpace = methodOrField.indexOf(' ');
-            if (indexofSpace == -1) {
-                // Method
-                int indexofBracket = methodOrField.indexOf('(');
-                String methodName = methodOrField.substring(0, indexofBracket);
-                String methodDesc = methodOrField.substring(indexofBracket);
-                methodName = this.methodRenames.optGet(ownerName, methodDesc, methodName);
-                sharedBuilder.setLength(0);
-                builder.append(methodName);
-                if (remapSignature(methodDesc, sharedBuilder)) {
-                    builder.append(sharedBuilder.toString());
-                } else {
-                    builder.append(methodDesc);
-                }
-            } else {
-                // Field
-                String fieldName = methodOrField.substring(0, indexofSpace);
-                String fieldDesc = methodOrField.substring(++indexofSpace);
-                fieldName = this.hierarchisedFieldRenames.optGet(ownerName, fieldDesc, fieldName);
-                sharedBuilder.setLength(0);
-                fieldDesc = remapSingleDesc(fieldDesc, sharedBuilder);
-                builder.append(fieldName);
-                builder.append(' ');
-                builder.append(fieldDesc);
-            }
-            return builder.toString();
         }
     }
 
