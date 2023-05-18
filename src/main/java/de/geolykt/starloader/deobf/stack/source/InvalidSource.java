@@ -4,20 +4,17 @@ import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.tree.AbstractInsnNode;
 
-@Deprecated
-public class UndefinedSource extends AbstractSource {
+public class InvalidSource extends AbstractSource {
 
-    @Deprecated
-    public static final UndefinedSource INSTANCE = new UndefinedSource();
+    public static final InvalidSource INSTANCE = new InvalidSource();
 
     @SuppressWarnings("null")
-    private UndefinedSource() {
+    private InvalidSource() {
         super((@NotNull AbstractInsnNode) (Object) null);
     }
 
     @Override
     @NotNull
-    @Deprecated
     @Contract(pure = true, value = "-> null")
     public AbstractInsnNode getInsn() {
         return super.getInsn();

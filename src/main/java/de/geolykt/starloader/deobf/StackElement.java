@@ -1,37 +1,11 @@
 package de.geolykt.starloader.deobf;
 
 import de.geolykt.starloader.deobf.stack.source.AbstractSource;
-import de.geolykt.starloader.deobf.stack.source.UndefinedSource;
+import de.geolykt.starloader.deobf.stack.source.InvalidSource;
 
-@SuppressWarnings("deprecation")
 public class StackElement {
 
-    @Deprecated
-    public static final StackElement INVALID = new StackElement(UndefinedSource.INSTANCE, false);
-    @Deprecated
-    public static final StackElement INT = new StackElement(UndefinedSource.INSTANCE, "I");
-    @Deprecated
-    public static final StackElement LONG = new StackElement(UndefinedSource.INSTANCE, "J");
-    @Deprecated
-    public static final StackElement DOUBLE = new StackElement(UndefinedSource.INSTANCE, "D");
-    @Deprecated
-    public static final StackElement FLOAT = new StackElement(UndefinedSource.INSTANCE, "F");
-    @Deprecated
-    public static final StackElement CHAR = new StackElement(UndefinedSource.INSTANCE, "C");
-    @Deprecated
-    public static final StackElement BYTE = new StackElement(UndefinedSource.INSTANCE, "B");
-    @Deprecated
-    public static final StackElement SHORT = new StackElement(UndefinedSource.INSTANCE, "S");
-    @Deprecated
-    public static final StackElement BOOLEAN = new StackElement(UndefinedSource.INSTANCE, "Z");
-    @Deprecated
-    public static final StackElement OBJECT = new StackElement(UndefinedSource.INSTANCE, "Ljava/lang/Object;");
-    @Deprecated
-    public static final StackElement CLASS = new StackElement(UndefinedSource.INSTANCE, "Ljava/lang/Class;");
-    @Deprecated
-    public static final StackElement STRING = new StackElement(UndefinedSource.INSTANCE, "Ljava/lang/String;");
-    @Deprecated
-    public static final StackElement NULL = new StackElement(UndefinedSource.INSTANCE, "Ljava/lang/Object;", true);
+    public static final StackElement INVALID_ELEMENT = new StackElement(InvalidSource.INSTANCE, false);
 
     public final boolean isValid;
     public final boolean isNull;

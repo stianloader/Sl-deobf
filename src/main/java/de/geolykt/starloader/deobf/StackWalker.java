@@ -29,16 +29,27 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import de.geolykt.starloader.deobf.stack.source.ArrayLoadSource;
+import de.geolykt.starloader.deobf.stack.source.ArithmeticOperationSource;
+import de.geolykt.starloader.deobf.stack.source.ArraylengthSource;
 import de.geolykt.starloader.deobf.stack.source.CastSource;
+import de.geolykt.starloader.deobf.stack.source.ConversionSource;
+import de.geolykt.starloader.deobf.stack.source.DoubleConstantSource;
 import de.geolykt.starloader.deobf.stack.source.FieldSource;
+import de.geolykt.starloader.deobf.stack.source.FloatConstantSource;
 import de.geolykt.starloader.deobf.stack.source.FrameSource;
 import de.geolykt.starloader.deobf.stack.source.GenericInsnSource;
 import de.geolykt.starloader.deobf.stack.source.IndyReturnSource;
+import de.geolykt.starloader.deobf.stack.source.InstanceofSource;
+import de.geolykt.starloader.deobf.stack.source.IntConstantSource;
+import de.geolykt.starloader.deobf.stack.source.IntPushConstantSource;
+import de.geolykt.starloader.deobf.stack.source.LongConstantSource;
 import de.geolykt.starloader.deobf.stack.source.MethodReturnSource;
 import de.geolykt.starloader.deobf.stack.source.NewArraySource;
+import de.geolykt.starloader.deobf.stack.source.NullConstantSource;
+import de.geolykt.starloader.deobf.stack.source.NumberCompareSource;
 import de.geolykt.starloader.deobf.stack.source.ParameterSource;
 import de.geolykt.starloader.deobf.stack.source.ThisSource;
-import de.geolykt.starloader.deobf.stack.source.UndefinedSource;
+import de.geolykt.starloader.deobf.stack.source.InvalidSource;
 
 @SuppressWarnings("deprecation")
 public class StackWalker {
@@ -100,14 +111,14 @@ public class StackWalker {
             locals.add(new StackElement(new ParameterSource(locals.size()), type));
             if (type.equals("J") || type.equals("D")) {
                 // Doubles and Longs occupy 2 stack entries
-                locals.add(StackElement.INVALID);
+                locals.add(StackElement.INVALID_ELEMENT);
             }
         }
         asmLocalsFrameSize = locals.size(); // Meh, not sure if this is what it should be
         desc = null;
 
         while (locals.size() < method.maxLocals) {
-            locals.add(StackElement.INVALID);
+            locals.add(StackElement.INVALID_ELEMENT);
         }
 
         // Only used in class version 49 (Java 5) or earlier, as they do not have the StackMap attributes by default.
@@ -115,7 +126,7 @@ public class StackWalker {
         if ((owner.version & 0x00FF) <= Opcodes.V1_5) {
             exceptionHandlers = new HashMap<>();
             for (TryCatchBlockNode trycatchBlock : method.tryCatchBlocks) {
-                exceptionHandlers.put(trycatchBlock.handler, new StackElement(UndefinedSource.INSTANCE, 'L' + trycatchBlock.type + ';'));
+                exceptionHandlers.put(trycatchBlock.handler, new StackElement(InvalidSource.INSTANCE, 'L' + trycatchBlock.type + ';'));
             }
         }
 
@@ -141,13 +152,13 @@ public class StackWalker {
                     stack.remove();
                 }
             } else if (insn instanceof IntInsnNode) {
+                IntInsnNode intInsn = (IntInsnNode) insn;
                 if (insn.getOpcode() == Opcodes.SIPUSH) {
-                    stack.add(StackElement.SHORT);
+                    stack.add(new StackElement(new IntPushConstantSource(intInsn), "S"));
                 } else if (insn.getOpcode() == Opcodes.BIPUSH) {
-                    stack.add(StackElement.BYTE);
+                    stack.add(new StackElement(new IntPushConstantSource(intInsn), "B"));
                 }  else if (insn.getOpcode() == Opcodes.NEWARRAY) {
                     StackElement arrayLen = stack.remove();
-                    IntInsnNode intInsn = (IntInsnNode) insn;
                     if (intInsn.operand == Opcodes.T_DOUBLE) {
                         stack.add(new StackElement(new NewArraySource(intInsn, arrayLen), "[D"));
                     } else if (intInsn.operand == Opcodes.T_BOOLEAN || intInsn.operand == 0) {
@@ -218,6 +229,7 @@ public class StackWalker {
                     stack.add(new StackElement(new MethodReturnSource(methodInsn), returnType));
                 }
             } else if (insn instanceof InsnNode) {
+                InsnNode insnNode = (InsnNode) insn;
                 switch (insn.getOpcode()) {
                 case Opcodes.POP2:
                     // operands on computational type category 2 take up two words;
@@ -233,35 +245,55 @@ public class StackWalker {
                     stack.add(stack.getHead());
                     break;
                 case Opcodes.ACONST_NULL:
-                    stack.add(StackElement.NULL);
+                    stack.add(new StackElement(new NullConstantSource(insnNode), "Ljava/lang/Object;", true));
                     break;
                 case Opcodes.ICONST_0:
+                    stack.add(new StackElement(new IntConstantSource(insnNode, 0), "I"));
+                    break;
                 case Opcodes.ICONST_1:
+                    stack.add(new StackElement(new IntConstantSource(insnNode, 1), "I"));
+                    break;
                 case Opcodes.ICONST_2:
+                    stack.add(new StackElement(new IntConstantSource(insnNode, 2), "I"));
+                    break;
                 case Opcodes.ICONST_3:
+                    stack.add(new StackElement(new IntConstantSource(insnNode, 3), "I"));
+                    break;
                 case Opcodes.ICONST_4:
+                    stack.add(new StackElement(new IntConstantSource(insnNode, 4), "I"));
+                    break;
                 case Opcodes.ICONST_5:
+                    stack.add(new StackElement(new IntConstantSource(insnNode, 5), "I"));
+                    break;
                 case Opcodes.ICONST_M1:
-                    stack.add(StackElement.INT);
+                    stack.add(new StackElement(new IntConstantSource(insnNode, -1), "I"));
                     break;
                 case Opcodes.LCONST_0:
+                    stack.add(new StackElement(new LongConstantSource(insnNode, 0L), "J"));
+                    break;
                 case Opcodes.LCONST_1:
-                    stack.add(StackElement.LONG);
+                    stack.add(new StackElement(new LongConstantSource(insnNode, 1L), "J"));
                     break;
                 case Opcodes.FCONST_0:
+                    stack.add(new StackElement(new FloatConstantSource(insnNode, 0F), "F"));
+                    break;
                 case Opcodes.FCONST_1:
+                    stack.add(new StackElement(new FloatConstantSource(insnNode, 1F), "F"));
+                    break;
                 case Opcodes.FCONST_2:
-                    stack.add(StackElement.FLOAT);
+                    stack.add(new StackElement(new FloatConstantSource(insnNode, 2F), "F"));
                     break;
                 case Opcodes.DCONST_0:
+                    stack.add(new StackElement(new DoubleConstantSource(insnNode, 0D), "D"));
+                    break;
                 case Opcodes.DCONST_1:
-                    stack.add(StackElement.DOUBLE);
+                    stack.add(new StackElement(new DoubleConstantSource(insnNode, 1D), "D"));
                     break;
                 case Opcodes.IALOAD:
-                    stack.add(new StackElement(new ArrayLoadSource((InsnNode) insn, stack.remove(), stack.remove()), "I"));
+                    stack.add(new StackElement(new ArrayLoadSource(insnNode, stack.remove(), stack.remove()), "I"));
                     break;
                 case Opcodes.LALOAD:
-                    stack.add(new StackElement(new ArrayLoadSource((InsnNode) insn, stack.remove(), stack.remove()), "L"));
+                    stack.add(new StackElement(new ArrayLoadSource(insnNode, stack.remove(), stack.remove()), "L"));
                     break;
                 case Opcodes.AALOAD: {
                     // arrayref, index -> value
@@ -270,37 +302,27 @@ public class StackWalker {
                         throw new IllegalStateException("Illegal AALOAD statement, index must be a primitive at the very least.");
                     }
                     StackElement arrayref = stack.remove();
-                    StackElement value = new StackElement(new ArrayLoadSource((InsnNode) insn, index, arrayref), arrayref.type.substring(1));
+                    StackElement value = new StackElement(new ArrayLoadSource(insnNode, index, arrayref), arrayref.type.substring(1));
                     if (value.type.isEmpty()) {
                         throw new IllegalStateException("Illegal AALOAD statement, arrayref was a primitive.");
                     }
                     stack.add(value);
-                }
                     break;
+                }
                 case Opcodes.FALOAD:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.FLOAT);
+                    stack.add(new StackElement(new ArrayLoadSource(insnNode, stack.remove(), stack.remove()), "F"));
                     break;
                 case Opcodes.DALOAD:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.DOUBLE);
+                    stack.add(new StackElement(new ArrayLoadSource(insnNode, stack.remove(), stack.remove()), "D"));
                     break;
                 case Opcodes.BALOAD:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.BYTE);
+                    stack.add(new StackElement(new ArrayLoadSource(insnNode, stack.remove(), stack.remove()), "B"));
                     break;
                 case Opcodes.CALOAD:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.CHAR);
+                    stack.add(new StackElement(new ArrayLoadSource(insnNode, stack.remove(), stack.remove()), "C"));
                     break;
                 case Opcodes.SALOAD:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.SHORT);
+                    stack.add(new StackElement(new ArrayLoadSource(insnNode, stack.remove(), stack.remove()), "S"));
                     break;
                 case Opcodes.DASTORE:
                 case Opcodes.LASTORE:
@@ -325,9 +347,7 @@ public class StackWalker {
                 case Opcodes.ISHL:
                 case Opcodes.IUSHR:
                 case Opcodes.IXOR:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.INT);
+                    stack.add(new StackElement(new ArithmeticOperationSource(insnNode, stack.remove(), stack.remove()), "I"));
                     break;
                 case Opcodes.LMUL:
                 case Opcodes.LREM:
@@ -340,81 +360,63 @@ public class StackWalker {
                 case Opcodes.LUSHR:
                 case Opcodes.LXOR:
                 case Opcodes.LDIV:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.LONG);
+                    stack.add(new StackElement(new ArithmeticOperationSource(insnNode, stack.remove(), stack.remove()), "L"));
                     break;
                 case Opcodes.DMUL:
                 case Opcodes.DREM:
                 case Opcodes.DADD:
                 case Opcodes.DSUB:
                 case Opcodes.DDIV:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.DOUBLE);
+                    stack.add(new StackElement(new ArithmeticOperationSource(insnNode, stack.remove(), stack.remove()), "D"));
                     break;
                 case Opcodes.FMUL:
                 case Opcodes.FREM:
                 case Opcodes.FADD:
                 case Opcodes.FSUB:
                 case Opcodes.FDIV:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.FLOAT);
+                    stack.add(new StackElement(new ArithmeticOperationSource(insnNode, stack.remove(), stack.remove()), "F"));
                     break;
                 case Opcodes.FCMPG:
                 case Opcodes.FCMPL:
                     // FCMPG and FCMPL are mostly identical outside of the treatment of NaN
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.INT);
+                    stack.add(new StackElement(new NumberCompareSource(insnNode, stack.remove(), stack.remove()), "I"));
                     break;
                 case Opcodes.LCMP:
                 case Opcodes.DCMPG:
                 case Opcodes.DCMPL:
-                    stack.remove();
-                    stack.remove();
-                    stack.add(StackElement.BYTE);
+                    stack.add(new StackElement(new NumberCompareSource(insnNode, stack.remove(), stack.remove()), "I"));
                     break;
                 case Opcodes.I2B:
-                    stack.remove();
-                    stack.add(StackElement.BYTE);
+                    stack.add(new StackElement(new ConversionSource(insnNode, stack.remove()), "B"));
                     break;
                 case Opcodes.I2C:
-                    stack.remove();
-                    stack.add(StackElement.CHAR);
+                    stack.add(new StackElement(new ConversionSource(insnNode, stack.remove()), "C"));
                     break;
                 case Opcodes.I2D:
                 case Opcodes.L2D:
                 case Opcodes.F2D:
-                    stack.remove();
-                    stack.add(StackElement.DOUBLE);
+                    stack.add(new StackElement(new ConversionSource(insnNode, stack.remove()), "D"));
                     break;
                 case Opcodes.I2F:
                 case Opcodes.L2F:
                 case Opcodes.D2F:
-                    stack.remove();
-                    stack.add(StackElement.FLOAT);
+                    stack.add(new StackElement(new ConversionSource(insnNode, stack.remove()), "F"));
                     break;
                 case Opcodes.I2L:
                 case Opcodes.F2L:
                 case Opcodes.D2L:
-                    stack.remove();
-                    stack.add(StackElement.LONG);
+                    stack.add(new StackElement(new ConversionSource(insnNode, stack.remove()), "J"));
                     break;
                 case Opcodes.I2S:
-                    stack.remove();
-                    stack.add(StackElement.SHORT);
+                    stack.add(new StackElement(new ConversionSource(insnNode, stack.remove()), "S"));
                     break;
                 case Opcodes.L2I:
                 case Opcodes.F2I:
                 case Opcodes.D2I:
-                    stack.remove();
-                    stack.add(StackElement.INT);
+                    stack.add(new StackElement(new ConversionSource(insnNode, stack.remove()), "I"));
                     break;
                 case Opcodes.ARRAYLENGTH:
-                    stack.remove();
-                    stack.add(StackElement.INT);
+                    stack.add(new StackElement(new ArraylengthSource(insnNode, stack.remove()), "I"));
                     break;
                 case Opcodes.IRETURN:
                 case Opcodes.ATHROW:
@@ -454,7 +456,7 @@ public class StackWalker {
                         stack.add(value2);
                         stack.add(value1);
                     } else {
-                        // Assume category 2 (it could've also been null (i.e. value2 is StackElement.INVALID), but that is unlikely)
+                        // Assume category 2 (it could've also been null (i.e. value2 is StackElement.INVALID_ELEMENT), but that is unlikely)
                         // Form 2 (value2, value1 -> value1, value2, value1)
                         // where as the computational type of value2 is in category 2 and the computational type of value1
                         // is in category 1.
@@ -595,11 +597,9 @@ public class StackWalker {
                 } else if (type.getOpcode() == Opcodes.ANEWARRAY) {
                     stack.add(new StackElement(new NewArraySource(insn, stack.remove()), "[L" + type.desc + ';'));
                 } else if (type.getOpcode() == Opcodes.INSTANCEOF) {
-                    stack.remove();
-                    stack.add(StackElement.BOOLEAN);
+                    stack.add(new StackElement(new InstanceofSource(type, stack.remove()), "Z"));
                 } else if (type.getOpcode() == Opcodes.CHECKCAST) {
-                    StackElement beforeCast = stack.remove();
-                    stack.add(new StackElement(new CastSource(type, beforeCast), 'L' + type.desc + ';'));
+                    stack.add(new StackElement(new CastSource(type, stack.remove()), 'L' + type.desc + ';'));
                 } else {
                     throw new IllegalStateException("Opcode " + type.getOpcode() + " not known.");
                 }
@@ -657,7 +657,7 @@ public class StackWalker {
                             if (o != null) {
                                 throw new IllegalStateException("Chop frame with non-null local?");
                             }
-                            locals.set(--asmLocalsFrameSize, StackElement.INVALID);
+                            locals.set(--asmLocalsFrameSize, StackElement.INVALID_ELEMENT);
                         }
                     } else if (frame.type == Opcodes.F_FULL) {
                         asmLocalsFrameSize = frame.local.size();
@@ -723,15 +723,15 @@ public class StackWalker {
             if (frame == Opcodes.UNINITIALIZED_THIS) {
                 return new StackElement(source, 'L' + ownerClass.name + ';');
             } else if (frame == Opcodes.NULL) {
-                return StackElement.NULL;
+                return new StackElement(source, "Ljava/lang/Object;", true);
             } else if (frame == Opcodes.DOUBLE) {
-                return StackElement.NULL;
+                return new StackElement(source, "D");
             } else if (frame == Opcodes.FLOAT) {
-                return StackElement.NULL;
+                return new StackElement(source, "F");
             } else if (frame == Opcodes.LONG) {
-                return StackElement.NULL;
+                return new StackElement(source, "J");
             } else if (frame == Opcodes.INTEGER) {
-                return StackElement.NULL;
+                return new StackElement(source, "I");
             } else if (frame == Opcodes.TOP) {
                 throw new IllegalStateException();
             } else {
