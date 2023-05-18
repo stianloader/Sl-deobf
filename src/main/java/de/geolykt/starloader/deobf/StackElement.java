@@ -3,6 +3,7 @@ package de.geolykt.starloader.deobf;
 import de.geolykt.starloader.deobf.stack.source.AbstractSource;
 import de.geolykt.starloader.deobf.stack.source.UndefinedSource;
 
+@SuppressWarnings("deprecation")
 public class StackElement {
 
     @Deprecated

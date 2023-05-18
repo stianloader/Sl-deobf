@@ -1,0 +1,53 @@
+package de.geolykt.starloader.deobf;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+
+import org.jetbrains.annotations.NotNull;
+
+class JavaInterop {
+
+    @NotNull
+    public static String codepointToString(int codepoint) {
+        return new String(new int[] {codepoint}, 0, 1);
+    }
+
+    @SafeVarargs
+    public static <T> Set<T> modifableSet(@NotNull T @NotNull... objects) {
+        Set<T> set = new HashSet<>();
+        for (T o : objects) {
+            set.add(o);
+        }
+        return set;
+    }
+
+    @NotNull
+    public static ClassLoader newURLClassloader(@NotNull String name, URL @NotNull[] urls, ClassLoader parent) {
+        return new URLClassLoader(urls, parent);
+    }
+
+    public static byte @NotNull[] readAllBytes(@NotNull InputStream in) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        JavaInterop.transferTo(in, baos);
+        return baos.toByteArray();
+    }
+
+    public static void transferTo(@NotNull InputStream source, @NotNull OutputStream sink) throws IOException {
+        byte[] buffer = new byte[4096];
+        for (int len = source.read(buffer); len != -1; len = source.read(buffer)) {
+            sink.write(buffer, 0, len);
+        }
+    }
+
+    @SafeVarargs
+    public static <T> Set<T> unmodifableSet(@NotNull T @NotNull... objects) {
+        return Collections.unmodifiableSet(JavaInterop.modifableSet(objects));
+    }
+}

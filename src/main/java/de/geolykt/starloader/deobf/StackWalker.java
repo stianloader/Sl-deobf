@@ -40,6 +40,7 @@ import de.geolykt.starloader.deobf.stack.source.ParameterSource;
 import de.geolykt.starloader.deobf.stack.source.ThisSource;
 import de.geolykt.starloader.deobf.stack.source.UndefinedSource;
 
+@SuppressWarnings("deprecation")
 public class StackWalker {
 
     public interface StackWalkerConsumer {
@@ -195,7 +196,7 @@ public class StackWalker {
                     System.err.println(ldc.cst);
                     throw new IllegalStateException();
                 } else {
-                    throw new UnsupportedOperationException("Unimplemented type: " + ldc.cst.getClass().descriptorString());
+                    throw new UnsupportedOperationException("Unimplemented type: " + ldc.cst.getClass().getName());
                 }
 
                 stack.add(new StackElement(new GenericInsnSource(ldc), typeDescriptor));

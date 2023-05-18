@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Optional;
 
+import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.Opcodes;
 
 import de.geolykt.starloader.deobf.access.AccessFlagModifier.Type;
@@ -26,6 +27,16 @@ public class AccessWidenerReader implements AutoCloseable {
         }
     }
 
+    private static final boolean isBlank(@NotNull String string) {
+        int length = string.length();
+        for (int i = 0; i < length; i++) {
+            if (!Character.isWhitespace(string.codePointAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private final AccessTransformInfo atInfo;
     private final BufferedReader br;
     private final boolean runtime;
@@ -40,7 +51,7 @@ public class AccessWidenerReader implements AutoCloseable {
         for (String ln = br.readLine(); ln != null; ln = br.readLine()) {
             int indexOfCommentSymbol = ln.indexOf('#');
             String pureLine = indexOfCommentSymbol == -1 ? ln : ln.substring(0, indexOfCommentSymbol);
-            if (!pureLine.isBlank()) {
+            if (!isBlank(pureLine)) {
                 String[] blocks = pureLine.trim().split("\\s+");
                 if (blocks.length != 3) {
                     throw new IllegalHeaderException(
@@ -70,7 +81,7 @@ public class AccessWidenerReader implements AutoCloseable {
         }
         int indexOfCommentSymbol = ln.indexOf('#');
         String pureLine = indexOfCommentSymbol == -1 ? ln : ln.substring(0, indexOfCommentSymbol);
-        if (pureLine.isBlank()) {
+        if (isBlank(pureLine)) {
             return true;
         }
         String[] blocks = pureLine.trim().split("\\s+");

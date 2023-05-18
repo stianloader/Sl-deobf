@@ -2,11 +2,14 @@ package de.geolykt.starloader.deobf;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -63,15 +66,15 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
 } public class IntermediaryGenerator {
 
     private boolean alternateClassNaming;
-    private final File map;
+    private final Path map;
     private final List<ClassNode> nodes = new ArrayList<>();
     private final Map<String, ClassNode> nameToNode = new HashMap<>();
 
-    private final File output;
+    private final Path output;
     private final Remapper remapper = new Remapper();
     private final List<Map.Entry<String, byte[]>> resources = new ArrayList<>();
 
-    public IntermediaryGenerator(@Nullable File map, File output, @Nullable Collection<ClassNode> nodes) {
+    public IntermediaryGenerator(@Nullable Path map, Path output, @Nullable Collection<ClassNode> nodes) {
         this.map = map;
         this.output = output;
         if (nodes != null) {
@@ -81,7 +84,7 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
         }
     }
 
-    public IntermediaryGenerator(File input, File map, File output) {
+    public IntermediaryGenerator(File input, Path map, Path output) {
         this(map, output, (Collection<ClassNode>) null);
         try {
             JarFile inJar = new JarFile(input);
@@ -91,7 +94,10 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
                 JarEntry entry = entries.nextElement();
                 InputStream is = inJar.getInputStream(entry);
                 if (!entry.getName().endsWith(".class")) {
-                    resources.add(Map.entry(entry.getName(), is.readAllBytes()));
+                    if (is == null) {
+                        continue;
+                    }
+                    this.resources.add(new AbstractMap.SimpleImmutableEntry<>(entry.getName(), JavaInterop.readAllBytes(is)));
                     is.close();
                     continue;
                 }
@@ -122,7 +128,10 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
                 JarEntry entry = entries.nextElement();
                 if (!entry.getName().endsWith(".class")) {
                     InputStream is = inJar.getInputStream(entry);
-                    resources.add(Map.entry(entry.getName(), is.readAllBytes()));
+                    if (is == null) {
+                        continue;
+                    }
+                    this.resources.add(new AbstractMap.SimpleImmutableEntry<>(entry.getName(), JavaInterop.readAllBytes(is)));
                     is.close();
                     continue;
                 }
@@ -175,9 +184,10 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
 
     public void deobfuscate() {
         remapper.process();
-        if (output != null) {
-            try (JarOutputStream jarOut = new JarOutputStream(new FileOutputStream(output))) {
-                for (ClassNode node : nodes) {
+        if (this.output != null) {
+            try (OutputStream rawOut = Files.newOutputStream(output);
+                    JarOutputStream jarOut = new JarOutputStream(rawOut)) {
+                for (ClassNode node : this.nodes) {
                     ClassWriter writer = new ClassWriter(0);
                     node.accept(writer);
                     jarOut.putNextEntry(new ZipEntry(node.name + ".class"));
@@ -200,10 +210,9 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
      */
     public void doProposeEnumFieldsV2() {
         BufferedWriter bw = null;
-        if (map != null) {
-            try {
-                @SuppressWarnings("resource")
-                BufferedWriter dontcomplain = new BufferedWriter(new FileWriter(map, StandardCharsets.UTF_8, true));
+        if (this.map != null) {
+            try { // Don't think about try-with-resources here
+                BufferedWriter dontcomplain = Files.newBufferedWriter(this.map, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
                 bw = dontcomplain;
                 bw.write("# begin enum field remapping");
                 bw.newLine();
@@ -391,16 +400,17 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
     }
 
     public void remapClassesV2(boolean findLocalClasses) {
-        BufferedWriter bw;
-        if (map != null) {
-            try {
-                @SuppressWarnings("resource")
-                BufferedWriter dontcomplain = new BufferedWriter(new FileWriter(map, StandardCharsets.UTF_8, false));
-                bw = dontcomplain;
-                bw.write("v1\tofficial\tintermediary\n");
+        final BufferedWriter bw;
+        if (this.map != null) {
+            BufferedWriter temp = null;
+            try { // Don't think about try-with-resources here
+                BufferedWriter dontcomplain = Files.newBufferedWriter(this.map, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
+                temp = dontcomplain;
+                temp.write("v1\tofficial\tintermediary\n");
             } catch (IOException e) {
-                throw new IllegalStateException(e);
+                e.printStackTrace();
             }
+            bw = temp;
         } else {
             bw = null;
         }
@@ -553,10 +563,9 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
 
     public void remapGetters() {
         BufferedWriter bw = null;
-        if (map != null) {
-            try {
-                @SuppressWarnings("resource")
-                BufferedWriter dontcomplain = new BufferedWriter(new FileWriter(map, StandardCharsets.UTF_8, true));
+        if (this.map != null) {
+            try { // Don't think about try-with-resources here
+                BufferedWriter dontcomplain = Files.newBufferedWriter(this.map, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
                 bw = dontcomplain;
                 bw.write("# begin getter remapping");
                 bw.newLine();
@@ -621,7 +630,7 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
                         continue;
                     }
                     FieldReference fref = new FieldReference(getField);
-                    getterCandidates.add(Map.entry(mref, fref));
+                    getterCandidates.add(new AbstractMap.SimpleImmutableEntry<>(mref, fref));
                 }
             }
         }

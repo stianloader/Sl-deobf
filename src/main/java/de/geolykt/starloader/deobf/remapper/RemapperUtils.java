@@ -6,7 +6,19 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.Locale;
 
+import org.jetbrains.annotations.NotNull;
+
 public final class RemapperUtils {
+
+    private static final boolean isBlank(@NotNull String string) {
+        int length = string.length();
+        for (int i = 0; i < length; i++) {
+            if (!Character.isWhitespace(string.codePointAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     /**
      * Static utility class.
@@ -21,7 +33,7 @@ public final class RemapperUtils {
             // we are going to ignore the namespace as they just produce too much headache
             String header = br.readLine();
             lineNr++;
-            if (header == null || header.isBlank()) {
+            if (header == null || isBlank(header)) {
                 br.close();
                 throw new IllegalStateException("No tiny header present (empty file?).");
             }
@@ -36,11 +48,11 @@ public final class RemapperUtils {
             }
             for (String line = br.readLine(); line != null; line = br.readLine()) {
                 lineNr++;
-                if (line.isBlank() || line.charAt(0) == '#') { // fast short-circuiting
+                if (isBlank(line) || line.charAt(0) == '#') { // fast short-circuiting
                     continue;
                 }
                 line = line.split("#", 2)[0];
-                if (line.isBlank()) {
+                if (line == null || isBlank(line)) {
                     continue;
                 }
                 String[] colums = line.split("\\s+");
@@ -79,7 +91,7 @@ public final class RemapperUtils {
             // we are going to ignore the namespace as they just produce too much headache
             String header = br.readLine();
             lineNr++;
-            if (header == null || header.isBlank()) {
+            if (header == null || isBlank(header)) {
                 br.close();
                 throw new IllegalStateException("No tiny header present (empty file?).");
             }
@@ -98,7 +110,7 @@ public final class RemapperUtils {
                     continue;
                 }
                 line = line.split("#", 2)[0];
-                if (line.isBlank()) {
+                if (line == null || isBlank(line)) {
                     continue;
                 }
                 String[] colums = line.split("\\s+");

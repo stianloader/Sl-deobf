@@ -51,9 +51,19 @@ import de.geolykt.starloader.deobf.access.AccessFlagModifier;
  * to go through an intermediary store-to-file mode.
  * Additionally, this is a no-bullshit remapper. It will only remap, not change your Access flags,
  * LVT entries or anything like that. If you want a deobfuscator,
- * use {@link de.geolykt.starloader.obftools.asm.Oaktree} after remapping.
+ * use {@link de.geolykt.starloader.deobf.Oaktree} after remapping.
  */
 public final class Remapper {
+
+    private static final boolean isBlank(@NotNull String string) {
+        int length = string.length();
+        for (int i = 0; i < length; i++) {
+            if (!Character.isWhitespace(string.codePointAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     private final FieldRenameMap fieldRenames = new FieldRenameMap();
     private final FieldRenameMap hierarchisedFieldRenames = new FieldRenameMap();
@@ -295,11 +305,7 @@ public final class Remapper {
         if (!remapSignature(methodDesc, sharedBuilder)) {
             return methodDesc;
         }
-        String s = sharedBuilder.toString();
-        if (s == null) {
-            throw new InternalError();
-        }
-        return s;
+        return sharedBuilder.toString();
     }
 
     /**
@@ -441,7 +447,7 @@ public final class Remapper {
             }
             int indexOfCommentSymbol = ln.indexOf('#');
             String pureLine = indexOfCommentSymbol == -1 ? ln : ln.substring(0, indexOfCommentSymbol);
-            if (pureLine.isBlank() || pureLine.toLowerCase(Locale.ROOT).startsWith("accesswidener")) {
+            if (isBlank(pureLine) || pureLine.toLowerCase(Locale.ROOT).startsWith("accesswidener")) {
                 bw.write(ln);
                 bw.newLine();
                 continue;
@@ -935,7 +941,7 @@ public final class Remapper {
      * <br> {@literal "org/example/Example.field Lorg/example/Type;"} for fields. The class name must be the old (unmapped) name
      * <br> {@literal "org/example/Example.method(Lorg/example/Parameter;)Lorg/example/ReturnType;"} for methods. Class and descriptor must be the old (unmapped name).
      * 
-     * @param The input string to remap
+     * @param string The input string to remap
      * @param sharedBuilder A string builder to reduce string builder allocations
      * @return The remapped string
      */

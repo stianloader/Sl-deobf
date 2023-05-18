@@ -6,11 +6,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -20,6 +22,7 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiPredicate;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
@@ -66,75 +69,36 @@ public class Oaktree {
      * A hardcoded set of implementations of the {@link Collection} interface that apply for
      * generics checking later on.
      */
-    public static final Set<String> COLLECTIONS = new HashSet<>() {
-        private static final long serialVersionUID = -3779578266088390366L;
-
-        {
-            add("Ljava/util/Vector;");
-            add("Ljava/util/List;");
-            add("Ljava/util/ArrayList;");
-            add("Ljava/util/Collection;");
-            add("Ljava/util/AbstractCollection;");
-            add("Ljava/util/AbstractList;");
-            add("Ljava/util/AbstractSet;");
-            add("Ljava/util/AbstractQueue;");
-            add("Ljava/util/HashSet;");
-            add("Ljava/util/Set;");
-            add("Ljava/util/Queue;");
-            add("Ljava/util/concurrent/ArrayBlockingQueue;");
-            add("Ljava/util/concurrent/ConcurrentLinkedQueue;");
-            add("Ljava/util/concurrent/ConcurrentLinkedQueue;");
-            add("Ljava/util/concurrent/DelayQueue;");
-            add("Ljava/util/concurrent/LinkedBlockingQueue;");
-            add("Ljava/util/concurrent/SynchronousQueue;");
-            add("Ljava/util/concurrent/BlockingQueue;");
-            add("Ljava/util/concurrent/BlockingDeque;");
-            add("Ljava/util/concurrent/LinkedBlockingDeque;");
-            add("Ljava/util/concurrent/ConcurrentLinkedDeque;");
-            add("Ljava/util/Deque;");
-            add("Ljava/util/ArrayDeque;");
-        }
-    };
+    public static final Set<String> COLLECTIONS  = JavaInterop.modifableSet("Ljava/util/Vector;", "Ljava/util/List;",
+            "Ljava/util/ArrayList;", "Ljava/util/Collection;", "Ljava/util/AbstractCollection;", "Ljava/util/AbstractList;",
+            "Ljava/util/AbstractSet;", "Ljava/util/AbstractQueue;", "Ljava/util/HashSet;", "Ljava/util/Set;",
+            "Ljava/util/Queue;", "Ljava/util/concurrent/ArrayBlockingQueue;", "Ljava/util/concurrent/ConcurrentLinkedQueue;",
+            "Ljava/util/concurrent/DelayQueue;", "Ljava/util/concurrent/LinkedBlockingQueue;",
+            "Ljava/util/concurrent/LinkedBlockingQueue;", "Ljava/util/concurrent/ConcurrentLinkedQueue;",
+            "Ljava/util/concurrent/ConcurrentLinkedDeque;", "Ljava/util/concurrent/SynchronousQueue;",
+            "Ljava/util/concurrent/BlockingQueue;", "Ljava/util/concurrent/BlockingDeque",
+            "Ljava/util/concurrent/LinkedBlockingDeque;", "Ljava/util/concurrent/ConcurrentLinkedDeque;",
+            "Ljava/util/Deque", "Ljava/util/ArrayDeque;");
 
     /**
      * A hardcoded set of implementations of the {@link Iterable} interface that apply for
      * generics checking later on.
      */
-    public static final Set<String> ITERABLES = new HashSet<>() {
-        private static final long serialVersionUID = -3779578266088390365L;
-
-        {
-            add("Ljava/util/Vector;");
-            add("Ljava/util/List;");
-            add("Ljava/util/ArrayList;");
-            add("Ljava/util/Collection;");
-            add("Ljava/util/AbstractCollection;");
-            add("Ljava/util/AbstractList;");
-            add("Ljava/util/AbstractSet;");
-            add("Ljava/util/AbstractQueue;");
-            add("Ljava/util/HashSet;");
-            add("Ljava/util/Set;");
-            add("Ljava/util/Queue;");
-            add("Ljava/util/concurrent/ArrayBlockingQueue;");
-            add("Ljava/util/concurrent/ConcurrentLinkedQueue;");
-            add("Ljava/util/concurrent/ConcurrentLinkedQueue;");
-            add("Ljava/util/concurrent/DelayQueue;");
-            add("Ljava/util/concurrent/LinkedBlockingQueue;");
-            add("Ljava/util/concurrent/SynchronousQueue;");
-            add("Ljava/util/concurrent/BlockingQueue;");
-            add("Ljava/util/concurrent/BlockingDeque;");
-            add("Ljava/util/concurrent/LinkedBlockingDeque;");
-            add("Ljava/util/concurrent/ConcurrentLinkedDeque;");
-            add("Ljava/util/Deque;");
-            add("Ljava/util/ArrayDeque;");
-            add("Ljava/lang/Iterable;");
-        }
-    };
+    public static final Set<String> ITERABLES = JavaInterop.modifableSet("Ljava/util/Vector;", "Ljava/util/List;",
+            "Ljava/util/ArrayList;", "Ljava/util/Collection;", "Ljava/util/AbstractCollection;", "Ljava/util/AbstractList;",
+            "Ljava/util/AbstractSet;", "Ljava/util/AbstractQueue;", "Ljava/util/HashSet;", "Ljava/util/Set;",
+            "Ljava/util/Queue;", "Ljava/util/concurrent/ArrayBlockingQueue;", "Ljava/util/concurrent/ConcurrentLinkedQueue;",
+            "Ljava/util/concurrent/DelayQueue;", "Ljava/util/concurrent/LinkedBlockingQueue;",
+            "Ljava/util/concurrent/LinkedBlockingQueue;", "Ljava/util/concurrent/ConcurrentLinkedQueue;",
+            "Ljava/util/concurrent/ConcurrentLinkedDeque;", "Ljava/util/concurrent/SynchronousQueue;",
+            "Ljava/util/concurrent/BlockingQueue;", "Ljava/util/concurrent/BlockingDeque",
+            "Ljava/util/concurrent/LinkedBlockingDeque;", "Ljava/util/concurrent/ConcurrentLinkedDeque;",
+            "Ljava/util/Deque", "Ljava/util/ArrayDeque;", "Ljava/util/Iterable;");
 
     // From https://docs.oracle.com/javase/tutorial/java/nutsandbolts/_keywords.html
     // While there have been other keywords that have been implemented in later versions of java, most of these later keywords
     // are only used in very specific conditions and hence are not an issue for our circumstances
-    public static final Set<String> JAVA_KEYWORDS = Set.of("abstract", "continue", "for", "new", "switch", "assert", "default",
+    public static final Set<String> JAVA_KEYWORDS = JavaInterop.unmodifableSet("abstract", "continue", "for", "new", "switch", "assert", "default",
             "goto", "package", "synchronized", "boolean", "do", "if", "private", "this", "break", "double", "implements", "protected",
             "throw", "byte", "else", "import", "public", "throws", "case", "enum", "instanceof", "return", "transient", "catch",
             "extends", "int", "short", "try", "char", "final", "interface", "static", "void", "class", "finally", "long",
@@ -188,7 +152,7 @@ public class Oaktree {
         return fieldDesc.substring(indexOfL, fieldDesc.length() - 1);
     }
 
-    public static void main(String[] args) {
+    public static void main(@NotNull String[] args) {
         long start = System.currentTimeMillis();
         if (args.length < 2) {
             System.err.println("Not enough arguments. The first argument is the source jar, the second one the target jar.");
@@ -214,7 +178,7 @@ public class Oaktree {
             System.out.println("Applied inner class nodes to referencing classes. (" + (System.currentTimeMillis() - startStep) + " ms)");
             if (args.length == 3 && Boolean.valueOf(args[2]) == true) {
                 // remapper activate!
-                IntermediaryGenerator gen = new IntermediaryGenerator(new File("map.tiny"), new File(args[1]), oakTree.nodes);
+                IntermediaryGenerator gen = new IntermediaryGenerator(Paths.get("map.tiny"), Paths.get(args[1]), oakTree.nodes);
                 gen.addResources(new File(args[0]));
                 gen.useAlternateClassNaming(Boolean.getBoolean("oaktree.cli.alternateClassNaming"));
                 gen.remapClassesV2();
@@ -239,7 +203,7 @@ public class Oaktree {
     private final ClassWrapperPool wrapperPool;
 
     public Oaktree() {
-        this(new URLClassLoader("Oaktree ClassWrapper Pool Classloader", new URL[0], Oaktree.class.getClassLoader()));
+        this(JavaInterop.newURLClassloader("Oaktree ClassWrapper Pool Classloader", new URL[0], Oaktree.class.getClassLoader()));
     }
 
     public Oaktree(ClassLoader classWrapperClassloader) {
@@ -673,7 +637,7 @@ public class Oaktree {
                         }
                         // The constructor of non-static inner classes must take in an instance of the outer class an
                         // argument
-                        if (!staticInnerClass && outerNode != null) {
+                        if (!staticInnerClass) {
                             boolean staticConstructor = false;
                             for (MethodNode method : node.methods) {
                                 if (method.name.equals("<init>")) {
@@ -838,9 +802,9 @@ public class Oaktree {
                             classNameBegin = Math.max(classNameBegin, type.lastIndexOf('$', classNameBegin) + 1); // FIXME does not appear to work as intended
                             String typeName = type.substring(classNameBegin, type.length() - 1);
                             if (typeName.length() == 1) {
-                                name = Character.toString(Character.toLowerCase(typeName.codePointAt(0)));
+                                name = JavaInterop.codepointToString(Character.toLowerCase(typeName.codePointAt(0)));
                             } else {
-                                name = Character.toString(Character.toLowerCase(typeName.codePointAt(0))) + typeName.substring(1);
+                                name = JavaInterop.codepointToString(Character.toLowerCase(typeName.codePointAt(0))) + typeName.substring(1);
                             }
 
                             if (name.length() < 3) {
@@ -1445,7 +1409,7 @@ public class Oaktree {
                             } else {
                                 Map.Entry<String, MethodNode> invoker = candidates.get(owner);
                                 if (invoker == null) {
-                                    candidates.put(owner, Map.entry(node.name, method));
+                                    candidates.put(owner, new AbstractMap.SimpleImmutableEntry<>(node.name, method));
                                 } else if (!invoker.getKey().equals(node.name)
                                         || !invoker.getValue().name.equals(method.name)
                                         || !invoker.getValue().desc.equals(method.desc)) {
@@ -1802,10 +1766,10 @@ public class Oaktree {
                             } else {
                                 signatureDesc = type.getDescriptor();
                             }
-                            collectionSignatures.put(fref, Map.entry(common, signatureDesc));
+                            collectionSignatures.put(fref, new AbstractMap.SimpleImmutableEntry<>(common, signatureDesc));
                         } else {
                             signatureDesc = type.getDescriptor();
-                            collectionSignatures.put(fref, Map.entry(wrapper, signatureDesc));
+                            collectionSignatures.put(fref, new AbstractMap.SimpleImmutableEntry<>(wrapper, signatureDesc));
                         }
                     }
                     insn = insn.getNext();
@@ -1930,7 +1894,11 @@ public class Oaktree {
     }
 
     public void index(JarFile file) {
-        file.entries().asIterator().forEachRemaining(entry -> {
+        Enumeration<JarEntry> entries = file.entries();
+        if (!entries.hasMoreElements()) {
+            return;
+        }
+        for (JarEntry entry = entries.nextElement(); entries.hasMoreElements(); entry = entries.nextElement()) {
             if (entry.getName().endsWith(".class")) {
                 ClassReader reader;
                 try {
@@ -1943,16 +1911,10 @@ public class Oaktree {
                 }
                 ClassNode node = new ClassNode();
                 reader.accept(node, 0);
-                nodes.add(node);
-//                if (node.name.endsWith("or/class_u")) {
-//                    org.objectweb.asm.util.ASMifier asmifier = new org.objectweb.asm.util.ASMifier();
-//                    org.objectweb.asm.util.TraceClassVisitor tcv =
-//                            new org.objectweb.asm.util.TraceClassVisitor(null, asmifier, new java.io.PrintWriter(System.out));
-//                    node.accept(tcv);
-//                }
-                nameToNode.put(node.name, node);
+                this.nodes.add(node);
+                this.nameToNode.put(node.name, node);
             }
-        });
+        }
     }
 
     /**
@@ -2463,7 +2425,7 @@ public class Oaktree {
                     }
                 }
                 jarOut.putNextEntry(entry);
-                zipIn.transferTo(jarOut);
+                JavaInterop.transferTo(zipIn, jarOut);
             }
         }
         jarOut.close();
