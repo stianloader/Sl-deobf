@@ -272,6 +272,28 @@ public final class Remapper {
     }
 
     /**
+     * Remaps a field name.
+     *
+     * @param owner The old (unmapped) class name
+     * @param name The old (unmapped) field name
+     * @param desc The old (unmapped) field descriptor
+     * @return The new (remapped) field name
+     * @since 0.1.0
+     */
+    @NotNull
+    public String getRemappedFieldName(@NotNull String owner, @NotNull String name, @NotNull String desc) {
+        if (this.fieldRenameHierarchyOutdated) {
+            createFieldHierarchy();
+            this.fieldRenameHierarchyOutdated = false;
+        }
+        String s = this.hierarchisedFieldRenames.get(owner, name, desc);
+        if (s == null) {
+            return name;
+        }
+        return s;
+    }
+
+    /**
      * Remaps a method descriptor.
      *
      * @param methodDesc The old (unmapped) method descriptor
@@ -285,6 +307,24 @@ public final class Remapper {
             return methodDesc;
         }
         return sharedBuilder.toString();
+    }
+
+    /**
+     * Remaps a method name.
+     *
+     * @param owner The old (unmapped) class name
+     * @param name The old (unmapped) method name
+     * @param desc The old (unmapped) method descriptor
+     * @return The new (remapped) method name
+     * @since 0.1.0
+     */
+    @NotNull
+    public String getRemappedMethodName(@NotNull String owner, @NotNull String name, @NotNull String desc) {
+        String s = this.methodRenames.get(owner, name, desc);
+        if (s == null) {
+            return name;
+        }
+        return s;
     }
 
     /**

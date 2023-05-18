@@ -51,7 +51,6 @@ import de.geolykt.starloader.deobf.stack.source.ParameterSource;
 import de.geolykt.starloader.deobf.stack.source.ThisSource;
 import de.geolykt.starloader.deobf.stack.source.InvalidSource;
 
-@SuppressWarnings("deprecation")
 public class StackWalker {
 
     public interface StackWalkerConsumer {

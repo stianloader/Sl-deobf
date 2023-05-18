@@ -3,6 +3,8 @@ package de.geolykt.starloader.deobf.remapper;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.jetbrains.annotations.Nullable;
+
 import de.geolykt.starloader.deobf.FieldReference;
 
 final class FieldRenameMap {
@@ -16,8 +18,9 @@ final class FieldRenameMap {
         renames.clear();
     }
 
+    @Nullable
     public String get(String owner, String descriptor, String oldName) {
-        return renames.get(new FieldReference(owner, descriptor, oldName));
+        return this.renames.get(new FieldReference(owner, descriptor, oldName));
     }
 
     public String getOrDefault(String owner, String descriptor, String oldName, String defaultValue) {
