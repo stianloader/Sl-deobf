@@ -212,7 +212,7 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
         BufferedWriter bw = null;
         if (this.map != null) {
             try { // Don't think about try-with-resources here
-                BufferedWriter dontcomplain = Files.newBufferedWriter(this.map, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+                BufferedWriter dontcomplain = Files.newBufferedWriter(this.map, StandardCharsets.UTF_8, StandardOpenOption.APPEND, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                 bw = dontcomplain;
                 bw.write("# begin enum field remapping");
                 bw.newLine();
@@ -404,7 +404,7 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
         if (this.map != null) {
             BufferedWriter temp = null;
             try { // Don't think about try-with-resources here
-                BufferedWriter dontcomplain = Files.newBufferedWriter(this.map, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
+                BufferedWriter dontcomplain = Files.newBufferedWriter(this.map, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                 temp = dontcomplain;
                 temp.write("v1\tofficial\tintermediary\n");
             } catch (IOException e) {
@@ -565,7 +565,7 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
         BufferedWriter bw = null;
         if (this.map != null) {
             try { // Don't think about try-with-resources here
-                BufferedWriter dontcomplain = Files.newBufferedWriter(this.map, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+                BufferedWriter dontcomplain = Files.newBufferedWriter(this.map, StandardCharsets.UTF_8, StandardOpenOption.APPEND, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                 bw = dontcomplain;
                 bw.write("# begin getter remapping");
                 bw.newLine();
