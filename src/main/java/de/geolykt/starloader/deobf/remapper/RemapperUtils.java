@@ -64,12 +64,12 @@ public final class RemapperUtils {
                     }
                     remapper.remapClassName(colums[1], colums[2]);
                 } else if (type.equals("METHOD")) {
-                    // Format: METHOD owner originalName descriptor newName
+                    // Format: METHOD owner descriptor originalName newName
                     if (colums.length != 5) {
                         throw new IllegalStateException("Line " + lineNr + " is of type CLASS, but only " + colums.length + " colums are present, even though it expects 5.");
                     }
                     try {
-                        remapper.remapMethod(colums[1], colums[3], colums[2], colums[4]);
+                        remapper.remapMethod(colums[1], colums[2], colums[3], colums[4]);
                     } catch (ConflicitingMappingException e) {
                         e.printStackTrace();
                     }

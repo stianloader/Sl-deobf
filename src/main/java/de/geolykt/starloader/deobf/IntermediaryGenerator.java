@@ -962,9 +962,9 @@ class ClassNodeNameComparator implements Comparator<ClassNode> {
                     bw.write("METHOD\t");
                     bw.write(method.getOwner());
                     bw.write('\t');
-                    bw.write(method.getName());
-                    bw.write('\t');
                     bw.write(method.getDesc());
+                    bw.write('\t');
+                    bw.write(method.getName());
                     bw.write('\t');
                     bw.write(newName);
                     bw.write('\n');
