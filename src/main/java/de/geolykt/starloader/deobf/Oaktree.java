@@ -753,7 +753,7 @@ public class Oaktree {
     /**
      * Method that tries to put the Local Variable Table (LVT) in a acceptable state
      * by synchronising parameter declarations with lvt declarations. Does not do
-     * anything to the LVT is the LVT is declared but empty, which is a sign of the
+     * anything to the LVT if the LVT is declared but empty, which is a sign of the
      * usage of obfuscation tools.
      * It is intended to be used in combination with decompilers such as quiltflower
      * but might not be useful for less naive decompilers such as procyon, which do not decompile
