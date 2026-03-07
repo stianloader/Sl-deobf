@@ -1,3 +1,12 @@
+This repository has moved to Codeberg! It is now available under the following URL: <https://codeberg.org/stianloader/stianloader-deobf>
+Hopefully this is the last time we change the URL of this project.
+
+Reason for moving to codeberg is an increasing unpredictable US government, which isn't great from a perspective of a small open source project
+already arguably skirting around the rule of the law. Further, no contributors could be found on github anyways, so it's not like we'd be
+loosing anything with such a change.
+
+=== 
+
 # SL-DEOBF
 
 The Starloader deobfuscator is not your traditional deobfuscator but rather a debug information regeneration tool.
